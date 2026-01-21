@@ -1,0 +1,236 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable prettier/prettier */
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  UseGuards,
+  Req,
+  HttpCode,
+  HttpStatus,
+  Ip,
+  Headers,
+  BadRequestException,
+} from '@nestjs/common';
+import { MessagePattern, Payload } from '@nestjs/microservices';
+import { AuthService } from './auth.service';
+import {
+  RegisterDto,
+  LoginDto,
+  VerifyOtpDto,
+  ForgotPasswordDto,
+  ChangePasswordDto,
+  ResendOtpDto,
+  RefreshTokenDto,
+} from './dto';
+import { JwtAuthGuard } from '@app/common/guards/auth.guard';
+import { User } from '@app/common/decorators/user.decorator';
+import { ResponseDto } from '@app/common/dto/response.dto';
+import { HttpStatus as HttpStatusEnum } from '@app/common/constants/http-status.enum';
+import { HttpMessage } from '@app/common/constants/http-message.enum';
+
+interface AuthenticatedUser {
+  id: string;
+  email: string;
+  role: string;
+}
+
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  async register(
+    @Body() registerDto: RegisterDto,
+    @Ip() ipAddress: string,
+  ) {
+    const result = await this.authService.register(registerDto, ipAddress);
+    return new ResponseDto(
+      HttpStatusEnum.CREATED,
+      HttpMessage.REGISTER_SUCCESS,
+      result,
+    );
+  }
+
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto) {
+    const result = await this.authService.verifyOtp(verifyOtpDto);
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      HttpMessage.VERIFY_OTP_SUCCESS,
+      result,
+    );
+  }
+
+  @Post('resend-otp')
+  @HttpCode(HttpStatus.OK)
+  async resendOtp(
+    @Body() resendOtpDto: ResendOtpDto,
+    @Ip() ipAddress: string,
+  ) {
+    const result = await this.authService.resendOtp(resendOtpDto, ipAddress);
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      HttpMessage.RESEND_OTP_SUCCESS,
+      result,
+    );
+  }
+
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(
+    @Body() loginDto: LoginDto,
+    @Ip() ipAddress: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    const result = await this.authService.login(loginDto, ipAddress, userAgent);
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      HttpMessage.LOGIN_SUCCESS,
+      result,
+    );
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async logout(@Req() req: { headers: Record<string, string> }, @User() user: AuthenticatedUser) {
+    const accessToken = req.headers.authorization?.split(' ')[1];
+    const result = await this.authService.logout(accessToken || '', user?.id);  
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      HttpMessage.LOGOUT_SUCCESS,
+      result,
+    );
+  }
+
+  @Post('logout-all')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async logoutAllDevices(@User() user: AuthenticatedUser) {
+    const result = await this.authService.logoutAllDevices(user.id);
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      'Đã đăng xuất khỏi tất cả thiết bị',
+      result,
+    );
+  }
+
+  @Post('refresh-token')
+  @HttpCode(HttpStatus.OK)
+  async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
+    const result = await this.authService.refreshToken(
+      refreshTokenDto.userId,
+      refreshTokenDto.refreshToken,
+    );
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      'Làm mới token thành công',
+      result,
+    );
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    const result = await this.authService.forgotPassword(forgotPasswordDto);
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      'Yêu cầu đặt lại mật khẩu thành công',
+      result,
+    );
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @User() user: AuthenticatedUser,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ) {
+    const result = await this.authService.changePassword(
+      user.id,
+      changePasswordDto,
+    );
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      'Đổi mật khẩu thành công',
+      result,
+    );
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getCurrentUser(@Req() req: { headers: Record<string, string> }) {
+    const accessToken = req.headers.authorization?.split(' ')[1];
+    const result = await this.authService.getCurrentUser(accessToken || '');
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      'Lấy thông tin người dùng thành công',
+      result,
+    );
+  }
+
+  @Post('validate-token')
+  @HttpCode(HttpStatus.OK)
+  async validateTokenHttp(@Body() data: { token: string }) {
+    const isValid = await this.authService.validateToken(data.token);
+    return new ResponseDto(
+      HttpStatusEnum.OK,
+      isValid ? 'Token hợp lệ' : 'Token không hợp lệ',
+      { valid: isValid },
+    );
+  }
+
+  // Microservice endpoints for internal communication
+  @MessagePattern('auth.validate-token')
+  async validateToken(@Payload() data: { token: string }) {
+    try {
+      const isValid = await this.authService.validateToken(data.token);
+      if (!isValid) {
+        return {
+          valid: false,
+          error: 'Token không hợp lệ hoặc đã hết hạn',
+        };
+      }
+      const user = await this.authService.getCurrentUser(data.token);
+      return {
+        valid: true,
+        user,
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  @MessagePattern('auth.get-user')
+  async getUser(@Payload() data: { userId: string }) {
+    try {
+      const profile = await this.authService['supabaseService'].getRecord(
+        'profiles',
+        data.userId,
+      );
+      return profile;
+    } catch (error) {
+      throw new BadRequestException(HttpMessage.GET_USER_ERROR + ': ' + (error as Error).message);
+    }
+  }
+
+  @MessagePattern('auth.check-session')
+  async checkSession(@Payload() data: { token: string }) {
+    try {
+      const isValid = await this.authService.validateToken(data.token);
+      return { valid: isValid };
+    } catch {
+      return { valid: false };
+    }
+  }
+}

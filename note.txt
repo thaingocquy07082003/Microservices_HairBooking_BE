@@ -1,0 +1,14 @@
+# Start Docker
+docker-compose up -d
+----------------------------------------------------------------
+#tạo các topic thủ công cho kafka :
+
+docker exec kafka kafka-topics --create --topic user.registered --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1 --if-not-exists
+docker exec kafka kafka-topics --create --topic user.verified --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1 --if-not-exists
+docker exec kafka kafka-topics --create --topic user.logged_in --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1 --if-not-exists
+
+----------------------------------------------------------------
+# Start services (3 terminals)
+npm run start:dev auth-service
+npm run start:dev user-service
+npm run start:dev api-gateway
