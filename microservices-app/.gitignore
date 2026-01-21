@@ -1,0 +1,26 @@
+# compiled output
+/dist
+/node_modules
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests
+/coverage
+/.nyc_output
+
+# IDEs
+/.idea
+.vscode/*
+!.vscode/settings.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
