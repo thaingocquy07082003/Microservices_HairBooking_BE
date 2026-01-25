@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Đặt lịch thành công</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .details {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .detail-item {
+            margin-bottom: 15px;
+        }
+        .label {
+            font-weight: bold;
+            color: #495057;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Đặt lịch thành công</h1>
+    </div>
+    
+    <div class="details">
+        <p>Xin chào {{username}},</p>
+        
+        <p>Chúng tôi xin thông báo rằng lịch hẹn của bạn đã được đặt thành công. Dưới đây là thông tin chi tiết:</p>
+        
+        <div class="detail-item">
+            <span class="label">Ngày hẹn:</span> {{date}}
+        </div>
+        
+        <div class="detail-item">
+            <span class="label">Dịch vụ:</span> {{service}}
+        </div>
+        
+        <div class="detail-item">
+            <span class="label">Chi nhánh:</span> {{branch}}
+        </div>
+        
+        <div class="detail-item">
+            <span class="label">Số điện thoại:</span> {{phone}}
+        </div>
+        
+        <p>Vui lòng đến trước giờ hẹn 10 phút để chúng tôi có thể phục vụ bạn tốt nhất.</p>
+        
+        <p>Nếu bạn cần hủy hoặc thay đổi lịch hẹn, vui lòng liên hệ với chúng tôi càng sớm càng tốt.</p>
+    </div>
+    
+    <div class="footer">
+        <p>Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi!</p>
+        <p>Đây là email tự động, vui lòng không trả lời email này.</p>
+    </div>
+</body>
+</html> 

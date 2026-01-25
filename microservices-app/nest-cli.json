@@ -24,7 +24,14 @@
       "entryFile": "main",
       "sourceRoot": "apps/auth-service/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/auth-service/tsconfig.app.json"
+        "tsConfigPath": "apps/auth-service/tsconfig.app.json",
+        "assets": [
+          {
+            "include": "mail/templates/**/*.hbs",
+            "outDir": "dist/apps/auth-service"
+          }
+        ],
+        "watchAssets": true
       }
     },
     "user-service": {

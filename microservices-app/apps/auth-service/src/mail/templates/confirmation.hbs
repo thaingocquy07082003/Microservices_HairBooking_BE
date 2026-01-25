@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mã OTP Xác Nhận Đăng Nhập</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f4f8;
+            color: #444;
+            padding: 40px;
+            margin: 0;
+        }
+
+        .container {
+            background-color: #ffffff;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            color: #333;
+            font-size: 28px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        p {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #555;
+            margin-bottom: 15px;
+        }
+
+        .otp {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+            display: block;
+            text-align: center;
+            background: #e7f4e4;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            letter-spacing: 2px;
+        }
+
+        .footer {
+            font-size: 14px;
+            color: #777;
+            text-align: center;
+            margin-top: 30px;
+            line-height: 1.4;
+        }
+
+        .footer a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 600px) {
+            body {
+                padding: 20px;
+            }
+
+            .container {
+                padding: 20px;
+            }
+
+            h2 {
+                font-size: 24px;
+            }
+
+            .otp {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h2>Xin chào</h2>
+        <p>Để xác nhận yêu cầu của bạn, vui lòng sử dụng mã OTP dưới đây:</p>
+        <p class="otp">{{otp}}</p>
+        <p>Mã OTP này sẽ hết hiệu lực sau 60 phút.</p>
+        <p class="footer">Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này.</p>
+        <p class="footer">Trân trọng, <br>Đội ngũ hỗ trợ của <strong>Nice App</strong></p>
+    </div>
+
+</body>
+
+</html>

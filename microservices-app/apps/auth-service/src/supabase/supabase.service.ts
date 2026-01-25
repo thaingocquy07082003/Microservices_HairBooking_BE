@@ -35,14 +35,14 @@ export class SupabaseService implements OnModuleInit {
   }
 
   // Auth Methods
+  // Create user WITHOUT Supabase email confirmation (use custom OTP instead)
   async signUp(email: string, password: string, metadata?: any) {
-    const { data, error } = await this.supabase.auth.signUp({
+    // Use admin API to create user without sending Supabase confirmation email
+    const { data, error } = await this.adminClient.auth.admin.createUser({
       email,
       password,
-      options: {
-        data: metadata,
-        emailRedirectTo: this.configService.get('APP_URL'),
-      },
+      email_confirm: false, // Don't auto-confirm, we'll do it manually after OTP verification
+      user_metadata: metadata,
     });
 
     if (error) throw error;
@@ -67,7 +67,7 @@ export class SupabaseService implements OnModuleInit {
   async getUser(accessToken: string) {
     const { data, error } = await this.supabase.auth.getUser(accessToken);
     if (error) throw error;
-    return data.user;
+    return data.user; 
   }
 
   async updateUser(accessToken: string, updates: any) {

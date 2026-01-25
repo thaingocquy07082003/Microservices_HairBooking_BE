@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tài khoản đã được xác thực thành công</title>
+    <style>
+        body {
+            font-family: 'Arial', 'Helvetica', sans-serif;
+            background-color: #f0f4f8;
+            color: #444;
+            padding: 40px 20px;
+            margin: 0;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 40px 30px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #2c7be5;
+            font-size: 28px;
+            margin: 0;
+        }
+        .greeting {
+            font-size: 22px;
+            color: #333;
+            margin: 0 0 20px 0;
+            text-align: center;
+        }
+        p {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #555;
+            margin: 0 0 20px 0;
+        }
+        .button-container {
+            text-align: center;
+            margin: 35px 0;
+        }
+        .button {
+            display: inline-block;
+            background-color: #2c7be5;
+            color: white !important;
+            font-size: 18px;
+            font-weight: bold;
+            text-decoration: none;
+            padding: 14px 36px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(44, 123, 229, 0.25);
+            transition: all 0.2s;
+        }
+        .button:hover {
+            background-color: #1e63c5;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(44, 123, 229, 0.35);
+        }
+        .info-box {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+        }
+        .footer {
+            font-size: 14px;
+            color: #777;
+            text-align: center;
+            margin-top: 40px;
+            line-height: 1.5;
+        }
+        .footer a {
+            color: #2c7be5;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 25px 20px;
+            }
+            .greeting {
+                font-size: 20px;
+            }
+            .button {
+                font-size: 16px;
+                padding: 12px 30px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Chúc mừng!</h1>
+        </div>
+
+        <h2 class="greeting">Xin chào {{fullName}},</h2>
+
+        <p>Tài khoản của bạn đã được <strong>xác thực thành công</strong>. Bạn có thể bắt đầu sử dụng dịch vụ ngay bây giờ.</p>
+
+        <div class="button-container">
+            <a href="{{loginUrl}}" class="button">Đăng nhập ngay</a>
+        </div>
+
+        <div class="info-box">
+            <p style="margin: 0; font-weight: 500; color: #334155;">
+                Lưu ý quan trọng:
+            </p>
+            <ul style="margin: 12px 0 0 20px; padding: 0; color: #555;">
+                <li>Giữ bí mật thông tin đăng nhập của bạn</li>
+                <li>Không chia sẻ mật khẩu với bất kỳ ai</li>
+                <li>Nếu bạn không phải là người thực hiện xác thực này, vui lòng liên hệ hỗ trợ ngay lập tức</li>
+            </ul>
+        </div>
+
+        <p>Cảm ơn bạn đã tin tưởng và đồng hành cùng chúng tôi!</p>
+
+        <p class="footer">
+            Trân trọng,<br>
+            Đội ngũ <strong>Nice App</strong><br>
+            <a href="{{loginUrl}}">{{loginUrl | replace('https://', '')}}</a><br><br>
+            Nếu bạn cần hỗ trợ, hãy liên hệ qua email hoặc chat trong ứng dụng.
+        </p>
+    </div>
+</body>
+</html>

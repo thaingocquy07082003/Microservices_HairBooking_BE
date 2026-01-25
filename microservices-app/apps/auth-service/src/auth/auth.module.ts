@@ -33,27 +33,37 @@ import { KafkaModule } from '@app/kafka';
     }),
     MailerModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        transport: {
-          host: configService.get<string>('MAIL_HOST'),
-          port: configService.get<number>('MAIL_PORT'),
-          secure: configService.get<boolean>('MAIL_SECURE', false),
-          auth: {
-            user: configService.get<string>('MAIL_USER'),
-            pass: configService.get<string>('MAIL_PASSWORD'),
+      useFactory: (configService: ConfigService) => {
+        // Determine template directory based on environment
+        const isDev = process.env.NODE_ENV !== 'production';
+        const templateDir = isDev
+          ? join(process.cwd(), 'apps', 'auth-service', 'src', 'mail', 'templates')
+          : join(process.cwd(), 'dist', 'apps', 'auth-service', 'mail', 'templates');
+
+        console.log('📧 Mail template directory:', templateDir);
+
+        return {
+          transport: {
+            host: configService.get<string>('MAIL_HOST'),
+            port: configService.get<number>('MAIL_PORT'),
+            secure: configService.get<string>('MAIL_SECURE') === 'true',
+            auth: {
+              user: configService.get<string>('MAIL_USER'),
+              pass: configService.get<string>('MAIL_PASSWORD'),
+            },
           },
-        },
-        defaults: {
-          from: `"${configService.get<string>('MAIL_FROM_NAME', 'No Reply')}" <${configService.get<string>('MAIL_FROM_ADDRESS')}>`,
-        },
-        template: {
-          dir: join(__dirname, '../mail/templates'),
-          adapter: new HandlebarsAdapter(),
-          options: {
-            strict: true,
+          defaults: {
+            from: `"${configService.get<string>('MAIL_FROM_NAME', 'No Reply')}" <${configService.get<string>('MAIL_FROM_ADDRESS')}>`,
           },
-        },
-      }),
+          template: {
+            dir: templateDir,
+            adapter: new HandlebarsAdapter(),
+            options: {
+              strict: true,
+            },
+          },
+        };
+      },
       inject: [ConfigService],
     }),
     RedisModule,

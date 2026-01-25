@@ -42,7 +42,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async setOtp(
     email: string,
     otp: string,
-    expirySeconds: number = 120,
+    expirySeconds: number = 3600,
   ): Promise<void> {
     const key = `otp:${email}`;
     await this.client.setex(key, expirySeconds, otp);

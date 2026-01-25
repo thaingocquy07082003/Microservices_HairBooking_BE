@@ -67,7 +67,7 @@ export class AuthService implements OnModuleInit {
   async register(registerDto: RegisterDto, ipAddress?: string) {
     const { email, password, fullName, phone } = registerDto;
 
-    // Check rate limiting
+    // Check rate limiting for registration (5 attempts per hour)
     const rateLimitKey = `register:${ipAddress || email}`;
     const attempts = await this.redisService.incrementCounter(
       rateLimitKey,
@@ -80,7 +80,7 @@ export class AuthService implements OnModuleInit {
     }
 
     try {
-      // Create user in Supabase Auth
+      // Create user in Supabase Auth (WITHOUT Supabase email confirmation)
       const { user } = await this.supabaseService.signUp(email, password, {
         full_name: fullName,
         phone,
@@ -91,11 +91,13 @@ export class AuthService implements OnModuleInit {
         throw new BadRequestException('Không thể tạo tài khoản');
       }
 
-      // Generate and store OTP
+      // Generate OTP (6 digits)
       const otp = this.generateOTP();
-      await this.redisService.setOtp(email, otp, 120); // 2 minutes
 
-      // Store temporary user data
+      // Store OTP in Redis with 60 minutes expiry
+      await this.redisService.setOtp(email, otp, 3600);
+
+      // Store temporary user data (10 minutes expiry)
       await this.redisService.set(
         `temp:user:${email}`,
         {
@@ -105,10 +107,10 @@ export class AuthService implements OnModuleInit {
           phone,
           role: Role.Customer,
         },
-        600, // 10 minutes
+        600,
       );
 
-      // Send OTP email
+      // Send OTP via YOUR email service (not Supabase)
       await this.mailService.sendOtpEmail(email, otp, fullName);
 
       // Emit event to Kafka
@@ -124,13 +126,28 @@ export class AuthService implements OnModuleInit {
         userId: user.id,
         email,
         message:
-          'Đăng ký thành công. Vui lòng kiểm tra email để xác thực tài khoản.',
+          'Đăng ký thành công. Vui lòng kiểm tra email để nhận mã OTP (có hiệu lực trong 60 phút).',
+        otpExpiresIn: 3600, // seconds
       };
     } catch (error: unknown) {
-      const err = error as Error;
-      if (err.message?.includes('already registered')) {
+      const err = error as Error & { code?: string; status?: number };
+
+      // Handle duplicate email
+      if (
+        err.message?.includes('already registered') ||
+        err.message?.includes('already been registered') ||
+        err.message?.includes('User already registered')
+      ) {
         throw new ConflictException('Email đã được đăng ký');
       }
+
+      // Handle rate limit from mail service
+      if (err.code === 'over_email_send_rate_limit' || err.status === 429) {
+        throw new BadRequestException(
+          'Đã vượt giới hạn gửi email. Vui lòng thử lại sau vài phút.',
+        );
+      }
+
       throw error;
     }
   }
@@ -138,11 +155,13 @@ export class AuthService implements OnModuleInit {
   async verifyOtp(verifyOtpDto: VerifyOtpDto) {
     const { email, otp } = verifyOtpDto;
 
-    // Get OTP from Redis
+    // Get OTP from Redis (60 minutes expiry)
     const storedOtp = await this.redisService.getOtp(email);
 
     if (!storedOtp) {
-      throw new BadRequestException('Mã OTP đã hết hạn hoặc không tồn tại');
+      throw new BadRequestException(
+        'Mã OTP đã hết hạn (60 phút) hoặc không tồn tại. Vui lòng yêu cầu gửi lại OTP.',
+      );
     }
 
     if (storedOtp !== otp) {
@@ -155,18 +174,20 @@ export class AuthService implements OnModuleInit {
     );
 
     if (!tempUserData) {
-      throw new BadRequestException('Phiên đăng ký đã hết hạn');
+      throw new BadRequestException(
+        'Phiên đăng ký đã hết hạn. Vui lòng đăng ký lại.',
+      );
     }
 
     try {
-      // Verify email in Supabase
-      await this.supabaseService.verifyOtp(email, otp, 'email');
-
-      // Update user metadata to mark as verified
+      // OTP is correct! Now confirm the user in Supabase
+      // Update user to mark email as confirmed (use email_confirm: true for Supabase Admin API)
       await this.supabaseService.updateUserById(tempUserData.userId, {
-        email_confirmed_at: new Date().toISOString(),
+        email_confirm: true,
         user_metadata: {
-          ...tempUserData,
+          full_name: tempUserData.fullName,
+          phone: tempUserData.phone,
+          role: tempUserData.role,
           verified: true,
         },
       });
@@ -182,17 +203,22 @@ export class AuthService implements OnModuleInit {
         created_at: new Date().toISOString(),
       });
 
-      // Clean up
+      // Clean up Redis data
       await this.redisService.deleteOtp(email);
       await this.redisService.delete(`temp:user:${email}`);
 
-      // Send welcome email
-      await this.mailService.sendAccountVerificationSuccess(
-        email,
-        tempUserData.fullName,
-      );
+      // Send welcome/success email
+      try {
+        await this.mailService.sendAccountVerificationSuccess(
+          email,
+          tempUserData.fullName,
+        );
+      } catch (mailError) {
+        // Don't fail if welcome email fails
+        console.warn('Failed to send welcome email:', mailError);
+      }
 
-      // Emit event
+      // Emit event to Kafka
       this.kafkaService.emit<UserVerifiedEvent>(KafkaTopics.USER_VERIFIED, {
         userId: tempUserData.userId,
         email,
@@ -201,10 +227,12 @@ export class AuthService implements OnModuleInit {
 
       return {
         success: true,
-        message: 'Xác thực tài khoản thành công',
+        message: 'Xác thực tài khoản thành công! Bạn có thể đăng nhập ngay.',
+        userId: tempUserData.userId,
       };
     } catch (error: unknown) {
       const err = error as Error;
+      console.error('OTP verification error:', err);
       throw new BadRequestException('Xác thực thất bại: ' + err.message);
     }
   }
@@ -212,7 +240,7 @@ export class AuthService implements OnModuleInit {
   async resendOtp(resendOtpDto: ResendOtpDto, ipAddress?: string) {
     const { email } = resendOtpDto;
 
-    // Rate limiting
+    // Rate limiting: 3 resend attempts per 5 minutes
     const rateLimitKey = `resend-otp:${ipAddress || email}`;
     const attempts = await this.redisService.incrementCounter(
       rateLimitKey,
@@ -224,24 +252,30 @@ export class AuthService implements OnModuleInit {
       );
     }
 
-    // Check if user exists in temp storage
+    // Check if user exists in temp storage (registration session)
     const tempUserData = await this.redisService.get<TempUserData>(
       `temp:user:${email}`,
     );
 
     if (!tempUserData) {
-      throw new BadRequestException('Không tìm thấy yêu cầu đăng ký');
+      throw new BadRequestException(
+        'Không tìm thấy yêu cầu đăng ký. Vui lòng đăng ký lại.',
+      );
     }
 
-    // Generate new OTP
+    // Generate new OTP (6 digits)
     const otp = this.generateOTP();
+
+    // Store new OTP with 2 minutes expiry
     await this.redisService.setOtp(email, otp, 120);
 
-    // Send OTP email
+    // Send OTP via email
     await this.mailService.sendOtpEmail(email, otp, tempUserData.fullName);
 
     return {
-      message: 'Mã OTP mới đã được gửi đến email của bạn',
+      message:
+        'Mã OTP mới đã được gửi đến email của bạn (có hiệu lực trong 2 phút)',
+      otpExpiresIn: 120,
     };
   }
 
@@ -252,9 +286,9 @@ export class AuthService implements OnModuleInit {
     const rateLimitKey = `login:${ipAddress || email}`;
     const attempts = await this.redisService.incrementCounter(
       rateLimitKey,
-      900,
+      900,  
     );
-    if (attempts > 5) {
+    if (attempts > 25) {
       throw new UnauthorizedException(
         'Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau 15 phút.',
       );
@@ -266,6 +300,10 @@ export class AuthService implements OnModuleInit {
         email,
         password,
       );
+
+      console.log('Login attempt for:', email);
+      console.log('User found:', user?.id);
+      console.log('Email confirmed at:', user?.email_confirmed_at);
 
       if (!session || !user) {
         throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
@@ -279,10 +317,34 @@ export class AuthService implements OnModuleInit {
       }
 
       // Get user profile
-      const profile = (await this.supabaseService.getRecord(
-        'profiles',
-        user.id,
-      )) as ProfileData;
+      let profile: ProfileData;
+      try {
+        profile = (await this.supabaseService.getRecord(
+          'profiles',
+          user.id,
+        )) as ProfileData;
+      } catch (profileError) {
+        console.error('Profile not found for user:', user.id, profileError);
+        // Auto-create profile if not exists
+        try {
+          const roleValue = user.user_metadata?.role || 'customer';
+          console.log('Attempting to create profile with role:', roleValue);
+          profile = (await this.supabaseService.insertRecord('profiles', {
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || email.split('@')[0],
+            phone: user.user_metadata?.phone || null,
+            role: roleValue.toLowerCase(), // Ensure lowercase for DB constraint
+            verified: true,
+          })) as ProfileData;
+          console.log('Auto-created profile for user:', user.id);
+        } catch (insertError) {
+          console.error('Failed to auto-create profile:', insertError);
+          throw new UnauthorizedException(
+            'Không thể tạo hồ sơ người dùng. Vui lòng liên hệ hỗ trợ.',
+          );
+        }
+      }
 
       // Store session in Redis
       await this.redisService.setSession(
@@ -304,14 +366,6 @@ export class AuthService implements OnModuleInit {
 
       // Track user session
       await this.redisService.addUserSession(user.id, session.access_token);
-
-      // Send login notification
-      await this.mailService.sendLoginNotification(
-        email,
-        profile.full_name,
-        ipAddress || 'Unknown',
-        userAgent || 'Unknown',
-      );
 
       // Emit login event
       this.kafkaService.emit<UserLoggedInEvent>(KafkaTopics.USER_LOGGED_IN, {

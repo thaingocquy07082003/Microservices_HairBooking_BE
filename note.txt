@@ -12,3 +12,18 @@ docker exec kafka kafka-topics --create --topic user.logged_in --bootstrap-serve
 npm run start:dev auth-service
 npm run start:dev user-service
 npm run start:dev api-gateway
+
+
+----------------------------------------------------------------
+
+# Kết nối Redis và xóa key
+docker exec -it redis redis-cli -a khongco
+
+# Trong Redis CLI:
+DEL register:127.0.0.1
+DEL register:::1
+KEYS register:*
+# Xóa tất cả keys bắt đầu bằng "register:"
+# DEL register:YOUR_IP
+
+exit

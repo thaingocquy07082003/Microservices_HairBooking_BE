@@ -1,10 +1,10 @@
 export enum Role {
-  Customer = 'Customer',
-  Receptionist = 'Receptionist', // Nhân viên tại quầy
-  HairStylist = 'HairStylist', // Thợ cắt tóc
-  Manager = 'Manager', // Quản lý tiệm
-  Admin = 'Admin',
-  SuperAdmin = 'SuperAdmin',
+  Customer = 'customer',
+  Receptionist = 'staff', // Nhân viên tại quầy
+  HairStylist = 'stylist', // Thợ cắt tóc
+  Manager = 'admin', // Quản lý tiệm
+  Admin = 'admin',
+  SuperAdmin = 'admin',
 }
 export const RoleList = [
   Role.Customer,

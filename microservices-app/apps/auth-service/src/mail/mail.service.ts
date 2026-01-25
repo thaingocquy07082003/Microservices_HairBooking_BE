@@ -89,30 +89,6 @@ export class MailService {
     }
   }
 
-  async sendLoginNotification(
-    email: string,
-    fullName: string,
-    ipAddress: string,
-    userAgent: string,
-  ): Promise<void> {
-    try {
-      await this.mailerService.sendMail({
-        to: email,
-        subject: 'Thông báo đăng nhập mới',
-        template: './login-notification',
-        context: {
-          fullName,
-          ipAddress,
-          userAgent,
-          loginTime: new Date().toLocaleString('vi-VN'),
-        },
-      });
-      console.log(`Login notification sent successfully to ${email}`);
-    } catch (error) {
-      console.error(`Failed to send login notification to ${email}:`, error);
-    }
-  }
-
   async sendAccountVerificationSuccess(
     email: string,
     fullName: string,
