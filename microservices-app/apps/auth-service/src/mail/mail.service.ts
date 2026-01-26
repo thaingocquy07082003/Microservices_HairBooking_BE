@@ -29,24 +29,6 @@ export class MailService {
     }
   }
 
-  async sendWelcomeEmail(email: string, fullName: string): Promise<void> {
-    try {
-      await this.mailerService.sendMail({
-        to: email,
-        subject: 'Chào mừng bạn đến với hệ thống!',
-        template: './welcome',
-        context: {
-          fullName,
-          loginUrl: `${this.configService.get('APP_URL')}/login`,
-        },
-      });
-      console.log(`Welcome email sent successfully to ${email}`);
-    } catch (error) {
-      console.error(`Failed to send welcome email to ${email}:`, error);
-      throw error;
-    }
-  }
-
   async sendPasswordResetEmail(
     email: string,
     resetToken: string,

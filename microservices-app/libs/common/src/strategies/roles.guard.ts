@@ -1,7 +1,8 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Role } from '../enum/role.enum';
-import { ROLES_KEY } from '../roles.decorator';
+import { Role } from '../enums/role.enum';
+
+import { ROLES_KEY } from '../decorators/roles.decorator';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -12,12 +13,28 @@ export class RolesGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!requiredRoles) {
+
+    // Nếu không yêu cầu role cụ thể, cho phép truy cập
+    if (!requiredRoles || requiredRoles.length === 0) {
       return true;
     }
-    const req = context.switchToHttp().getRequest();
-    console.log(requiredRoles);
-    console.log(req.user.id);
-    return requiredRoles.includes(req.user.role);
+
+    const request = context.switchToHttp().getRequest();
+    const user = request.user;
+
+    if (!user) {
+      throw new ForbiddenException('Người dùng chưa được xác thực');
+    }
+
+    // Kiểm tra user có role phù hợp không
+    const hasRole = requiredRoles.some((role) => user.role === role);
+
+    if (!hasRole) {
+      throw new ForbiddenException(
+        `Bạn không có quyền truy cập. Yêu cầu một trong các role: ${requiredRoles.join(', ')}`
+      );
+    }
+
+    return true;
   }
 }

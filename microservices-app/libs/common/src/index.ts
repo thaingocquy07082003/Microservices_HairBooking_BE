@@ -1,3 +1,5 @@
+// libs/common/src/index.ts
+
 // Constants
 export * from './constants/http-message.enum';
 export * from './constants/http-status.enum';
@@ -6,11 +8,15 @@ export * from './constants/queue.constant';
 // Decorators
 export * from './decorators/admin.decorator';
 export * from './decorators/user.decorator';
+export * from './decorators/roles.decorator';
 
 // DTOs
 export * from './dto/base-search.dto';
 export * from './dto/pagination.dto';
 export * from './dto/response.dto';
+
+// Entities
+export * from './entities/hairstyle.entity';
 
 // Enums
 export * from './enums/role.enum';

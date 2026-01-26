@@ -1,0 +1,33 @@
+┌─────────────────────────────────────────────────────────────────┐
+│                        API GATEWAY (Port 3000)                   │
+│  - Route requests                                                │
+│  - Authentication/Authorization                                  │
+│  - Rate limiting                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
+        ┌────────────────────────┼────────────────────────┐
+        │                        │                        │
+┌───────▼────────┐    ┌─────────▼─────────┐    ┌────────▼────────┐
+│  AUTH SERVICE  │    │  USER SERVICE     │    │ BOOKING SERVICE │
+│   (Port 3001)  │    │   (Port 3002)     │    │   (Port 3003)   │
+│                │    │                   │    │                 │
+│ - Register     │    │ - Profiles        │    │ - Appointments  │
+│ - Login/Logout │    │ - Hairstyles      │    │ - Scheduling    │
+│ - JWT tokens   │    │ - Stylists        │    │ - Availability  │
+│ - OTP          │    │ - Catalog mgmt    │    │ - Queue mgmt    │
+│ - Password     │    │                   │    │                 │
+└────────────────┘    └───────────────────┘    └─────────────────┘
+        │                        │                        │
+        └────────────────────────┼────────────────────────┘
+                                 │
+        ┌────────────────────────┼────────────────────────┐
+        │                        │                        │
+┌───────▼────────┐    ┌─────────▼─────────┐    ┌────────▼────────┐
+│ PAYMENT SERVICE│    │NOTIFICATION SERVICE│   │ ANALYTICS SERVICE│
+│   (Port 3004)  │    │   (Port 3005)     │    │   (Port 3006)   │
+│                │    │                   │    │                 │
+│ - Transactions │    │ - Email/SMS       │    │ - Reports       │
+│ - Invoices     │    │ - Push notifications│   │ - Dashboards    │
+│ - Refunds      │    │ - Templates       │    │ - Statistics    │
+│ - History      │    │ - Event-driven    │    │ - Insights      │
+└────────────────┘    └───────────────────┘    └─────────────────┘
