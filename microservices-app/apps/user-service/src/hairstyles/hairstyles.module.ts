@@ -6,6 +6,7 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '@app/common';
+import { SelfUpdateGuard } from './guards/self-update.guard';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { JwtStrategy } from '@app/common';
     }),
   ],
   controllers: [HairstylesController],
-  providers: [HairstylesService, JwtStrategy],
+  providers: [HairstylesService, JwtStrategy, SelfUpdateGuard],
   exports: [HairstylesService],
 })
 export class HairstylesModule {}

@@ -22,6 +22,7 @@ import {
 import { JwtAuthGuard, Role } from '@app/common';
 import { RolesGuard } from '@app/common/strategies/roles.guard';
 import { Roles } from '@app/common/decorators/roles.decorator';
+import { SelfUpdateGuard } from './guards/self-update.guard';
 
 @Controller('hairstyles')
 export class HairstylesController {
@@ -194,18 +195,21 @@ export class HairstylesController {
   }
 
   /**
-   * [ADMIN] Cập nhật thông tin thợ cắt tóc
+   * [ADMIN + HAIRSTYLIST] Cập nhật thông tin thợ cắt tóc
    * Roles: Admin, SuperAdmin, HairStylist (chỉ cập nhật thông tin của chính mình)
+   * 
+   * SelfUpdateGuard đảm bảo:
+   * - HairStylist chỉ được update chính mình
+   * - Admin/SuperAdmin có thể update bất kỳ stylist nào
    */
   @Put('stylists/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, SelfUpdateGuard)
   @Roles(Role.HairStylist, Role.Admin, Role.SuperAdmin)
   @HttpCode(HttpStatus.OK)
   async updateStylist(
     @Param('id') id: string,
     @Body() dto: UpdateStylistDto,
   ) {
-    // TODO: Thêm logic kiểm tra HairStylist chỉ được update chính mình
     const stylist = await this.hairstylesService.updateStylist(id, dto);
     return {
       statusCode: HttpStatus.OK,
