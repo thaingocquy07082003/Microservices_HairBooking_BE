@@ -27,6 +27,7 @@ import {
   ResendOtpDto,
 } from './dto';
 import { Role } from '@app/common/enums/role.enum';
+import { JwtService } from '@nestjs/jwt';
 
 interface TempUserData {
   userId: string;
@@ -53,6 +54,7 @@ export class AuthService implements OnModuleInit {
     private readonly redisService: RedisService,
     private readonly kafkaService: KafkaService,
     private readonly mailService: MailService,
+    private readonly jwtService: JwtService,
   ) {}
 
   onModuleInit() {
@@ -346,9 +348,22 @@ export class AuthService implements OnModuleInit {
         }
       }
 
+      // Create JWT tokens
+      const payload = {
+        sub: profile.id,
+        email: profile.email,
+        role: profile.role,
+      };
+      const accessToken = this.jwtService.sign(payload, {
+        expiresIn: '24h',
+      });
+      const refreshToken = this.jwtService.sign(payload, {
+        expiresIn: '7d',
+      });
+
       // Store session in Redis
       await this.redisService.setSession(
-        session.access_token,
+        accessToken,
         {
           userId: user.id,
           email: user.email,
@@ -360,12 +375,12 @@ export class AuthService implements OnModuleInit {
       // Store refresh token in Redis
       await this.redisService.setRefreshToken(
         user.id,
-        session.refresh_token,
+        refreshToken,
         604800, // 7 days
       );
 
       // Track user session
-      await this.redisService.addUserSession(user.id, session.access_token);
+      await this.redisService.addUserSession(user.id, accessToken);
 
       // Emit login event
       this.kafkaService.emit<UserLoggedInEvent>(KafkaTopics.USER_LOGGED_IN, {
@@ -377,8 +392,8 @@ export class AuthService implements OnModuleInit {
       });
 
       return {
-        accessToken: session.access_token,
-        refreshToken: session.refresh_token,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
         user: {
           id: user.id,
           email: user.email,
