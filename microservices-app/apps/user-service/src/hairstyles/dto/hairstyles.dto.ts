@@ -33,6 +33,9 @@ export class CreateHairstyleDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean = true;
+
+  @IsString()
+  category_id: string;
 }
 
 export class UpdateHairstyleDto {

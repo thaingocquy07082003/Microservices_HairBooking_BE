@@ -61,6 +61,7 @@ export class HairstylesService {
         category: dto.category,
         difficulty: dto.difficulty,
         is_active: dto.isActive ?? true,
+        category_id: dto.category_id,
       })
       .select()
       .single();
