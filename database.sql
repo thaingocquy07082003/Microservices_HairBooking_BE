@@ -247,6 +247,93 @@ CREATE POLICY "Managers can manage hairstyle-stylist links"
     )
   );
 
+  -- ============================================
+-- FIX RLS POLICIES - Allow Service Role Access
+-- ============================================
+
+-- BƯỚC 1: Drop tất cả policies cũ
+DROP POLICY IF EXISTS "Stylists are viewable by everyone" ON stylists;
+DROP POLICY IF EXISTS "Stylists can update own profile" ON stylists;
+DROP POLICY IF EXISTS "Admins can insert stylists" ON stylists;
+DROP POLICY IF EXISTS "Admins can delete stylists" ON stylists;
+DROP POLICY IF EXISTS "Hairstyles are viewable by everyone" ON hairstyles;
+DROP POLICY IF EXISTS "Managers can manage hairstyles" ON hairstyles;
+DROP POLICY IF EXISTS "Hairstyle-Stylist links are viewable by everyone" ON hairstyle_stylists;
+DROP POLICY IF EXISTS "Managers can manage hairstyle-stylist links" ON hairstyle_stylists;
+
+-- BƯỚC 2: Tạo policies mới cho Service Role
+
+-- ============================================
+-- STYLISTS TABLE POLICIES
+-- ============================================
+
+-- Allow service_role full access (for backend API)
+CREATE POLICY "Service role has full access to stylists"
+  ON stylists
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- Public can view all stylists
+CREATE POLICY "Anyone can view stylists"
+  ON stylists
+  FOR SELECT
+  TO anon, authenticated
+  USING (true);
+
+-- Authenticated users can view stylists
+CREATE POLICY "Authenticated users can view stylists"
+  ON stylists
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+-- ============================================
+-- HAIRSTYLES TABLE POLICIES
+-- ============================================
+
+-- Allow service_role full access (for backend API)
+CREATE POLICY "Service role has full access to hairstyles"
+  ON hairstyles
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- Public can view active hairstyles
+CREATE POLICY "Anyone can view active hairstyles"
+  ON hairstyles
+  FOR SELECT
+  TO anon, authenticated
+  USING (is_active = true);
+
+-- Allow viewing all hairstyles for authenticated users
+CREATE POLICY "Authenticated can view all hairstyles"
+  ON hairstyles
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+-- ============================================
+-- HAIRSTYLE_STYLISTS TABLE POLICIES
+-- ============================================
+
+-- Allow service_role full access
+CREATE POLICY "Service role has full access to hairstyle_stylists"
+  ON hairstyle_stylists
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- Public can view links
+CREATE POLICY "Anyone can view hairstyle-stylist links"
+  ON hairstyle_stylists
+  FOR SELECT
+  TO anon, authenticated
+  USING (true);
+
 -- ============================================
 -- SEED DATA (Dữ liệu mẫu)
 -- ============================================

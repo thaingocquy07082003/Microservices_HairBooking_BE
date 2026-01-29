@@ -23,10 +23,7 @@ export class SelfUpdateGuard implements CanActivate {
     // HairStylist chỉ được update chính mình
     if (user.role === Role.HairStylist) {
       try {
-        // Lấy thông tin stylist để kiểm tra user_id
         const stylist = await this.hairstylesService.getStylistById(stylistId);
-        
-        // Kiểm tra xem stylist này có thuộc về user hiện tại không
         if (stylist.userId !== user.id) {
           throw new ForbiddenException(
             'Bạn chỉ được phép cập nhật thông tin của chính mình'
