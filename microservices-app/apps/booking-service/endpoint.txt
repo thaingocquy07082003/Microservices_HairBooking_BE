@@ -1,0 +1,31 @@
+Appointments
+
+-POST /api/v1/appointments - Tạo lịch hẹn
+-GET /api/v1/appointments/my-appointments - Xem lịch hẹn của mình
+-GET /api/v1/appointments - Xem tất cả lịch hẹn (Staff)
+-GET /api/v1/appointments/:id - Xem chi tiết lịch hẹn
+-PUT /api/v1/appointments/:id - Cập nhật lịch hẹn
+-POST /api/v1/appointments/:id/cancel - Hủy lịch hẹn
+-POST /api/v1/appointments/:id/confirm - Xác nhận lịch hẹn
+-POST /api/v1/appointments/:id/complete - Hoàn thành lịch hẹn
+-GET /api/v1/appointments/stats/overview - Thống kê
+
+Scheduling
+
+-POST /api/v1/schedules - Tạo lịch làm việc
+-POST /api/v1/schedules/bulk - Tạo nhiều lịch
+-GET /api/v1/schedules - Xem lịch làm việc
+-PUT /api/v1/schedules/:id - Cập nhật lịch
+-DELETE /api/v1/schedules/:id - Xóa lịch
+
+Availability
+
+-GET /api/v1/availability/slots - Xem các slot khả dụng
+-POST /api/v1/availability/check - Kiểm tra khả dụng
+
+Queue
+
+-POST /api/v1/queue - Thêm vào hàng đợi
+-GET /api/v1/queue - Xem hàng đợi
+-POST /api/v1/queue/call-next - Gọi người tiếp theo
+-PUT /api/v1/queue/:id/position - Thay đổi vị trí

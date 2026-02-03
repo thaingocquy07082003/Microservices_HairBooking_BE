@@ -1,0 +1,35 @@
+🎯 5 Modules chính:
+1️⃣ ANALYTICS MODULE (Core)
+
+-Track bookings
+-Aggregate revenue
+-Calculate performance metrics
+-Manage customer insights
+
+2️⃣ REPORTS MODULE
+
+-Revenue reports (daily/weekly/monthly/yearly)
+-Booking reports
+-Stylist performance reports
+-Customer activity reports
+
+3️⃣ DASHBOARDS MODULE
+
+-Overview dashboard (Manager/Admin)
+-Revenue dashboard
+-Stylist performance dashboard
+-Customer insights dashboard
+
+4️⃣ STATISTICS MODULE
+
+-KPIs (Key Performance Indicators)
+-Trend analysis
+-Comparison statistics
+-Top performers
+
+5️⃣ INSIGHTS MODULE
+
+-Business insights
+-Recommendations
+-Anomaly detection
+-Churn prediction

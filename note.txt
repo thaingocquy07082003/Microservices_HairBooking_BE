@@ -12,6 +12,7 @@ docker exec kafka kafka-topics --create --topic user.logged_in --bootstrap-serve
 npm run start:dev auth-service
 npm run start:dev user-service
 npm run start:dev api-gateway
+npm run start:dev booking-service
 
 
 ----------------------------------------------------------------

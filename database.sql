@@ -402,3 +402,721 @@ FROM stylists s
 LEFT JOIN hairstyle_stylists hs ON s.id = hs.stylist_id
 LEFT JOIN hairstyles h ON hs.hairstyle_id = h.id AND h.is_active = true
 GROUP BY s.id;
+
+-- ============================================
+-- MIGRATION: Add Hair Categories Table
+-- ============================================
+-- Purpose: Tách category từ enum sang bảng riêng để quản lý linh hoạt hơn
+-- Date: January 2026
+
+-- ============================================
+-- 1. CREATE HAIR_CATEGORIES TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS hair_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(100) NOT NULL UNIQUE,
+  slug VARCHAR(100) NOT NULL UNIQUE,
+  description TEXT,
+  icon TEXT, -- URL to icon image
+  image_url TEXT, -- Banner image for category page
+  display_order INTEGER DEFAULT 0, -- Thứ tự hiển thị
+  is_active BOOLEAN DEFAULT true,
+  meta_title VARCHAR(200), -- SEO
+  meta_description TEXT, -- SEO
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================
+-- 2. CREATE INDEXES
+-- ============================================
+CREATE INDEX idx_hair_categories_slug ON hair_categories(slug);
+CREATE INDEX idx_hair_categories_is_active ON hair_categories(is_active);
+CREATE INDEX idx_hair_categories_display_order ON hair_categories(display_order);
+
+-- ============================================
+-- 3. SEED DEFAULT CATEGORIES
+-- ============================================
+-- Chèn các categories mặc định từ enum cũ
+INSERT INTO hair_categories (name, slug, description, display_order, is_active) VALUES
+('Nam - Tóc Ngắn', 'men-short', 'Các kiểu tóc ngắn phù hợp với nam giới', 1, true),
+('Nam - Tóc Trung Bình', 'men-medium', 'Các kiểu tóc trung bình cho nam', 2, true),
+('Nam - Tóc Dài', 'men-long', 'Các kiểu tóc dài cho nam', 3, true),
+('Nữ - Tóc Ngắn', 'women-short', 'Các kiểu tóc ngắn cho nữ giới', 4, true),
+('Nữ - Tóc Trung Bình', 'women-medium', 'Các kiểu tóc trung bình cho nữ', 5, true),
+('Nữ - Tóc Dài', 'women-long', 'Các kiểu tóc dài cho nữ giới', 6, true),
+('Trẻ Em', 'kids', 'Các kiểu tóc dành cho trẻ em', 7, true),
+('Râu', 'beard', 'Các kiểu tạo râu và chăm sóc râu', 8, true),
+('Nhuộm Màu', 'coloring', 'Các dịch vụ nhuộm và highlight', 9, true),
+('Uốn/Duỗi', 'perm', 'Các dịch vụ uốn và duỗi tóc', 10, true)
+ON CONFLICT (slug) DO NOTHING;
+
+-- ============================================
+-- 4. ADD CATEGORY_ID TO HAIRSTYLES TABLE
+-- ============================================
+-- Thêm cột mới (nullable trước)
+ALTER TABLE hairstyles ADD COLUMN IF NOT EXISTS category_id UUID;
+
+-- Tạo foreign key
+ALTER TABLE hairstyles 
+ADD CONSTRAINT fk_hairstyles_category 
+FOREIGN KEY (category_id) 
+REFERENCES hair_categories(id) 
+ON DELETE SET NULL;
+
+-- Create index
+CREATE INDEX idx_hairstyles_category_id ON hairstyles(category_id);
+
+-- ============================================
+-- 5. MIGRATE DATA - Map old enum to new table
+-- ============================================
+-- Update existing hairstyles to use new category_id
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'men-short'
+)
+WHERE category = 'men_short';
+
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'men-medium'
+)
+WHERE category = 'men_medium';
+
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'men-long'
+)
+WHERE category = 'men_long';
+
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'women-short'
+)
+WHERE category = 'women_short';
+
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'women-medium'
+)
+WHERE category = 'men_medium';
+
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'women-long'
+)
+WHERE category = 'women_long';
+
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'kids'
+)
+WHERE category = 'kids';
+
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'beard'
+)
+WHERE category = 'beard';
+
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'coloring'
+)
+WHERE category = 'coloring';
+
+UPDATE hairstyles 
+SET category_id = (
+  SELECT id FROM hair_categories WHERE slug = 'perm'
+)
+WHERE category = 'perm';
+
+-- ============================================
+-- 6. MAKE CATEGORY_ID NOT NULL (after data migration)
+-- ============================================
+-- Sau khi migrate data xong, set NOT NULL
+ALTER TABLE hairstyles ALTER COLUMN category_id SET NOT NULL;
+
+-- ============================================
+-- 7. DROP OLD CATEGORY COLUMN (OPTIONAL - Keep for backward compatibility)
+-- ============================================
+-- Option 1: Giữ lại cột cũ để backward compatibility (RECOMMENDED)
+-- DO NOTHING
+
+-- Option 2: Xóa cột cũ (uncomment nếu muốn)
+-- ALTER TABLE hairstyles DROP COLUMN IF EXISTS category;
+
+-- ============================================
+-- 8. TRIGGERS
+-- ============================================
+-- Trigger tự động cập nhật updated_at
+CREATE OR REPLACE FUNCTION update_hair_categories_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_hair_categories_updated_at
+  BEFORE UPDATE ON hair_categories
+  FOR EACH ROW
+  EXECUTE FUNCTION update_hair_categories_updated_at();
+
+-- ============================================
+-- 9. ROW LEVEL SECURITY (RLS)
+-- ============================================
+ALTER TABLE hair_categories ENABLE ROW LEVEL SECURITY;
+
+-- Allow service_role full access
+CREATE POLICY "Service role has full access to hair_categories"
+  ON hair_categories
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- Public can view active categories
+CREATE POLICY "Anyone can view active categories"
+  ON hair_categories
+  FOR SELECT
+  TO anon, authenticated
+  USING (is_active = true);
+
+-- Authenticated can view all categories
+CREATE POLICY "Authenticated can view all categories"
+  ON hair_categories
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+-- ============================================
+-- 10. VIEWS - Enhanced hairstyles_with_categories
+-- ============================================
+-- Drop old view if exists
+DROP VIEW IF EXISTS hairstyles_with_stylists;
+
+-- Create new view with category info
+CREATE OR REPLACE VIEW hairstyles_with_details AS
+SELECT 
+  h.*,
+  json_build_object(
+    'id', c.id,
+    'name', c.name,
+    'slug', c.slug,
+    'icon', c.icon
+  ) as category_info,
+  COALESCE(
+    json_agg(
+      json_build_object(
+        'id', s.id,
+        'fullName', s.full_name,
+        'avatarUrl', s.avatar_url,
+        'experience', s.experience,
+        'rating', s.rating
+      )
+    ) FILTER (WHERE s.id IS NOT NULL),
+    '[]'::json
+  ) as stylists
+FROM hairstyles h
+LEFT JOIN hair_categories c ON h.category_id = c.id
+LEFT JOIN hairstyle_stylists hs ON h.id = hs.hairstyle_id
+LEFT JOIN stylists s ON hs.stylist_id = s.id
+GROUP BY h.id, c.id, c.name, c.slug, c.icon;
+
+-- ============================================
+-- 11. VERIFICATION QUERIES
+-- ============================================
+-- Verify migration
+-- SELECT COUNT(*) as total_categories FROM hair_categories;
+-- SELECT COUNT(*) as hairstyles_with_category FROM hairstyles WHERE category_id IS NOT NULL;
+-- SELECT c.name, COUNT(h.id) as hairstyle_count 
+-- FROM hair_categories c 
+-- LEFT JOIN hairstyles h ON c.id = h.category_id 
+-- GROUP BY c.id, c.name 
+-- ORDER BY c.display_order;
+
+-- ============================================
+-- ROLLBACK (if needed)
+-- ============================================
+-- DROP VIEW IF EXISTS hairstyles_with_details;
+-- ALTER TABLE hairstyles DROP CONSTRAINT IF EXISTS fk_hairstyles_category;
+-- ALTER TABLE hairstyles DROP COLUMN IF EXISTS category_id;
+-- DROP TABLE IF EXISTS hair_categories CASCADE;
+
+-- ============================================
+-- BOOKING SERVICE - SUPABASE SCHEMA
+-- ============================================
+
+-- 1. Bảng Appointments (Lịch hẹn)
+CREATE TABLE IF NOT EXISTS appointments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  stylist_id UUID NOT NULL REFERENCES stylists(id) ON DELETE RESTRICT,
+  hairstyle_id UUID NOT NULL REFERENCES hairstyles(id) ON DELETE RESTRICT,
+  
+  -- Thông tin đặt lịch
+  appointment_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  duration INTEGER NOT NULL CHECK (duration >= 15), -- phút
+  
+  -- Trạng thái
+  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (
+    status IN (
+      'pending',      -- Chờ xác nhận
+      'confirmed',    -- Đã xác nhận
+      'in_progress',  -- Đang thực hiện
+      'completed',    -- Hoàn thành
+      'cancelled',    -- Đã hủy
+      'no_show'       -- Khách không đến
+    )
+  ),
+  
+  -- Thông tin khách hàng
+  customer_name VARCHAR(255) NOT NULL,
+  customer_phone VARCHAR(20) NOT NULL,
+  customer_email VARCHAR(255),
+  
+  -- Ghi chú
+  notes TEXT,
+  cancellation_reason TEXT,
+  
+  -- Giá tiền
+  price DECIMAL(10,2) NOT NULL CHECK (price >= 0),
+  deposit_amount DECIMAL(10,2) DEFAULT 0 CHECK (deposit_amount >= 0),
+  deposit_paid BOOLEAN DEFAULT false,
+  
+  -- Reminder
+  reminder_sent BOOLEAN DEFAULT false,
+  reminder_sent_at TIMESTAMP WITH TIME ZONE,
+  
+  -- Metadata
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  confirmed_at TIMESTAMP WITH TIME ZONE,
+  cancelled_at TIMESTAMP WITH TIME ZONE,
+  completed_at TIMESTAMP WITH TIME ZONE,
+  
+  -- Constraints
+  CONSTRAINT valid_time_range CHECK (end_time > start_time),
+  CONSTRAINT valid_deposit CHECK (deposit_amount <= price)
+);
+
+-- 2. Bảng Stylist Schedule (Lịch làm việc của thợ)
+CREATE TABLE IF NOT EXISTS stylist_schedules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stylist_id UUID NOT NULL REFERENCES stylists(id) ON DELETE CASCADE,
+  
+  -- Ngày làm việc
+  work_date DATE NOT NULL,
+  
+  -- Giờ làm việc
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  
+  -- Trạng thái
+  is_available BOOLEAN DEFAULT true,
+  is_day_off BOOLEAN DEFAULT false,
+  
+  -- Ghi chú
+  notes TEXT,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  -- Unique constraint: Mỗi stylist chỉ có 1 schedule cho 1 ngày
+  CONSTRAINT unique_stylist_date UNIQUE(stylist_id, work_date),
+  CONSTRAINT valid_work_time CHECK (end_time > start_time)
+);
+
+-- 3. Bảng Break Times (Giờ nghỉ trong ngày)
+CREATE TABLE IF NOT EXISTS stylist_break_times (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  schedule_id UUID NOT NULL REFERENCES stylist_schedules(id) ON DELETE CASCADE,
+  
+  break_start TIME NOT NULL,
+  break_end TIME NOT NULL,
+  reason VARCHAR(100),
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT valid_break_time CHECK (break_end > break_start)
+);
+
+-- 4. Bảng Queue Management (Quản lý hàng đợi)
+CREATE TABLE IF NOT EXISTS appointment_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  appointment_id UUID NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  
+  -- Vị trí trong queue
+  queue_position INTEGER NOT NULL CHECK (queue_position > 0),
+  
+  -- Thời gian ước tính
+  estimated_start_time TIMESTAMP WITH TIME ZONE,
+  estimated_wait_minutes INTEGER DEFAULT 0,
+  
+  -- Trạng thái
+  status VARCHAR(20) NOT NULL DEFAULT 'waiting' CHECK (
+    status IN ('waiting', 'called', 'serving', 'completed', 'cancelled')
+  ),
+  
+  -- Thông báo
+  notified BOOLEAN DEFAULT false,
+  notified_at TIMESTAMP WITH TIME ZONE,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT unique_appointment_queue UNIQUE(appointment_id)
+);
+
+-- 5. Bảng Recurring Appointments (Lịch hẹn định kỳ)
+CREATE TABLE IF NOT EXISTS recurring_appointments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  stylist_id UUID NOT NULL REFERENCES stylists(id) ON DELETE RESTRICT,
+  hairstyle_id UUID NOT NULL REFERENCES hairstyles(id) ON DELETE RESTRICT,
+  
+  -- Cấu hình lặp lại
+  recurrence_type VARCHAR(20) NOT NULL CHECK (
+    recurrence_type IN ('daily', 'weekly', 'biweekly', 'monthly')
+  ),
+  
+  -- Ngày bắt đầu và kết thúc
+  start_date DATE NOT NULL,
+  end_date DATE,
+  
+  -- Giờ cố định
+  preferred_time TIME NOT NULL,
+  duration INTEGER NOT NULL,
+  
+  -- Trạng thái
+  is_active BOOLEAN DEFAULT true,
+  
+  -- Metadata
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 6. Bảng Appointment History (Lịch sử thay đổi)
+CREATE TABLE IF NOT EXISTS appointment_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  appointment_id UUID NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  
+  -- Thông tin thay đổi
+  changed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  action VARCHAR(50) NOT NULL, -- created, updated, cancelled, confirmed, etc.
+  
+  -- Dữ liệu trước và sau
+  old_data JSONB,
+  new_data JSONB,
+  
+  -- Ghi chú
+  notes TEXT,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 7. Bảng Blackout Dates (Ngày nghỉ lễ, đóng cửa)
+CREATE TABLE IF NOT EXISTS blackout_dates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Ngày nghỉ
+  blackout_date DATE NOT NULL,
+  
+  -- Thông tin
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  
+  -- Áp dụng cho ai
+  applies_to_all BOOLEAN DEFAULT true,
+  stylist_id UUID REFERENCES stylists(id) ON DELETE CASCADE,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT unique_blackout_date UNIQUE(blackout_date, stylist_id)
+);
+
+-- ============================================
+-- INDEXES
+-- ============================================
+
+-- Appointments indexes
+CREATE INDEX idx_appointments_customer ON appointments(customer_id);
+CREATE INDEX idx_appointments_stylist ON appointments(stylist_id);
+CREATE INDEX idx_appointments_hairstyle ON appointments(hairstyle_id);
+CREATE INDEX idx_appointments_date ON appointments(appointment_date);
+CREATE INDEX idx_appointments_status ON appointments(status);
+CREATE INDEX idx_appointments_datetime ON appointments(appointment_date, start_time);
+
+-- Stylist Schedules indexes
+CREATE INDEX idx_stylist_schedules_stylist ON stylist_schedules(stylist_id);
+CREATE INDEX idx_stylist_schedules_date ON stylist_schedules(work_date);
+CREATE INDEX idx_stylist_schedules_available ON stylist_schedules(is_available);
+
+-- Queue indexes
+CREATE INDEX idx_queue_appointment ON appointment_queue(appointment_id);
+CREATE INDEX idx_queue_position ON appointment_queue(queue_position);
+CREATE INDEX idx_queue_status ON appointment_queue(status);
+
+-- Recurring Appointments indexes
+CREATE INDEX idx_recurring_customer ON recurring_appointments(customer_id);
+CREATE INDEX idx_recurring_stylist ON recurring_appointments(stylist_id);
+CREATE INDEX idx_recurring_active ON recurring_appointments(is_active);
+
+-- History indexes
+CREATE INDEX idx_history_appointment ON appointment_history(appointment_id);
+CREATE INDEX idx_history_created ON appointment_history(created_at DESC);
+
+-- ============================================
+-- TRIGGERS
+-- ============================================
+
+-- Trigger tự động cập nhật updated_at cho appointments
+CREATE OR REPLACE FUNCTION update_appointments_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_appointments_updated_at
+  BEFORE UPDATE ON appointments
+  FOR EACH ROW
+  EXECUTE FUNCTION update_appointments_updated_at();
+
+-- Trigger tự động cập nhật updated_at cho stylist_schedules
+CREATE OR REPLACE FUNCTION update_stylist_schedules_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_stylist_schedules_updated_at
+  BEFORE UPDATE ON stylist_schedules
+  FOR EACH ROW
+  EXECUTE FUNCTION update_stylist_schedules_updated_at();
+
+-- Trigger ghi log khi appointment thay đổi
+CREATE OR REPLACE FUNCTION log_appointment_changes()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO appointment_history (appointment_id, action, new_data)
+    VALUES (NEW.id, 'created', row_to_json(NEW)::jsonb);
+  ELSIF TG_OP = 'UPDATE' THEN
+    INSERT INTO appointment_history (appointment_id, action, old_data, new_data)
+    VALUES (NEW.id, 'updated', row_to_json(OLD)::jsonb, row_to_json(NEW)::jsonb);
+  ELSIF TG_OP = 'DELETE' THEN
+    INSERT INTO appointment_history (appointment_id, action, old_data)
+    VALUES (OLD.id, 'deleted', row_to_json(OLD)::jsonb);
+  END IF;
+  
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_log_appointment_changes
+  AFTER INSERT OR UPDATE OR DELETE ON appointments
+  FOR EACH ROW
+  EXECUTE FUNCTION log_appointment_changes();
+
+-- Trigger cập nhật total_bookings cho stylist khi appointment completed
+CREATE OR REPLACE FUNCTION update_stylist_bookings_count()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'completed' AND (OLD.status IS NULL OR OLD.status != 'completed') THEN
+    UPDATE stylists 
+    SET total_bookings = total_bookings + 1
+    WHERE id = NEW.stylist_id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_stylist_bookings
+  AFTER INSERT OR UPDATE ON appointments
+  FOR EACH ROW
+  WHEN (NEW.status = 'completed')
+  EXECUTE FUNCTION update_stylist_bookings_count();
+
+-- ============================================
+-- ROW LEVEL SECURITY (RLS)
+-- ============================================
+
+-- Enable RLS
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stylist_schedules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stylist_break_times ENABLE ROW LEVEL SECURITY;
+ALTER TABLE appointment_queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recurring_appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE appointment_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blackout_dates ENABLE ROW LEVEL SECURITY;
+
+-- Service role policies (Backend full access)
+CREATE POLICY "Service role full access appointments"
+  ON appointments FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access schedules"
+  ON stylist_schedules FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access break_times"
+  ON stylist_break_times FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access queue"
+  ON appointment_queue FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access recurring"
+  ON recurring_appointments FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access history"
+  ON appointment_history FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access blackout"
+  ON blackout_dates FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+-- Authenticated users policies
+CREATE POLICY "Users can view own appointments"
+  ON appointments FOR SELECT TO authenticated
+  USING (auth.uid() = customer_id);
+
+CREATE POLICY "Users can view available schedules"
+  ON stylist_schedules FOR SELECT TO authenticated
+  USING (is_available = true);
+
+CREATE POLICY "Users can view blackout dates"
+  ON blackout_dates FOR SELECT TO authenticated
+  USING (true);
+
+-- ============================================
+-- FUNCTIONS
+-- ============================================
+
+-- Function để check xem stylist có available không tại thời điểm cụ thể
+CREATE OR REPLACE FUNCTION is_stylist_available(
+  p_stylist_id UUID,
+  p_date DATE,
+  p_start_time TIME,
+  p_end_time TIME,
+  p_exclude_appointment_id UUID DEFAULT NULL
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_schedule_exists BOOLEAN;
+  v_has_conflict BOOLEAN;
+  v_is_blackout BOOLEAN;
+BEGIN
+  -- Check if stylist has schedule for this date
+  SELECT EXISTS(
+    SELECT 1 FROM stylist_schedules
+    WHERE stylist_id = p_stylist_id
+      AND work_date = p_date
+      AND is_available = true
+      AND is_day_off = false
+      AND p_start_time >= start_time
+      AND p_end_time <= end_time
+  ) INTO v_schedule_exists;
+  
+  IF NOT v_schedule_exists THEN
+    RETURN false;
+  END IF;
+  
+  -- Check for blackout dates
+  SELECT EXISTS(
+    SELECT 1 FROM blackout_dates
+    WHERE blackout_date = p_date
+      AND (applies_to_all = true OR stylist_id = p_stylist_id)
+  ) INTO v_is_blackout;
+  
+  IF v_is_blackout THEN
+    RETURN false;
+  END IF;
+  
+  -- Check for conflicting appointments
+  SELECT EXISTS(
+    SELECT 1 FROM appointments
+    WHERE stylist_id = p_stylist_id
+      AND appointment_date = p_date
+      AND status NOT IN ('cancelled', 'no_show')
+      AND (id != p_exclude_appointment_id OR p_exclude_appointment_id IS NULL)
+      AND (
+        (p_start_time >= start_time AND p_start_time < end_time)
+        OR (p_end_time > start_time AND p_end_time <= end_time)
+        OR (p_start_time <= start_time AND p_end_time >= end_time)
+      )
+  ) INTO v_has_conflict;
+  
+  RETURN NOT v_has_conflict;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function để tính queue position
+CREATE OR REPLACE FUNCTION calculate_queue_position(
+  p_appointment_id UUID
+)
+RETURNS INTEGER AS $$
+DECLARE
+  v_position INTEGER;
+BEGIN
+  SELECT COUNT(*) + 1 INTO v_position
+  FROM appointment_queue
+  WHERE status = 'waiting'
+    AND id != p_appointment_id
+    AND created_at < (SELECT created_at FROM appointment_queue WHERE appointment_id = p_appointment_id);
+  
+  RETURN v_position;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================
+-- VIEWS
+-- ============================================
+
+-- View để lấy appointments với đầy đủ thông tin
+CREATE OR REPLACE VIEW appointments_detailed AS
+SELECT 
+  a.*,
+  s.full_name as stylist_name,
+  s.avatar_url as stylist_avatar,
+  h.name as hairstyle_name,
+  h.image_url as hairstyle_image,
+  p.full_name as customer_full_name,
+  p.email as customer_user_email,
+  p.phone as customer_user_phone
+FROM appointments a
+LEFT JOIN stylists s ON a.stylist_id = s.id
+LEFT JOIN hairstyles h ON a.hairstyle_id = h.id
+LEFT JOIN profiles p ON a.customer_id = p.id;
+
+-- View để lấy available time slots
+CREATE OR REPLACE VIEW available_time_slots AS
+SELECT 
+  ss.stylist_id,
+  ss.work_date,
+  ss.start_time,
+  ss.end_time,
+  s.full_name as stylist_name,
+  COUNT(a.id) as booking_count
+FROM stylist_schedules ss
+JOIN stylists s ON ss.stylist_id = s.id
+LEFT JOIN appointments a ON 
+  a.stylist_id = ss.stylist_id 
+  AND a.appointment_date = ss.work_date
+  AND a.status NOT IN ('cancelled', 'no_show')
+WHERE ss.is_available = true
+  AND ss.is_day_off = false
+  AND ss.work_date >= CURRENT_DATE
+GROUP BY ss.id, ss.stylist_id, ss.work_date, ss.start_time, ss.end_time, s.full_name;
