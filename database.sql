@@ -1120,3 +1120,418 @@ WHERE ss.is_available = true
   AND ss.is_day_off = false
   AND ss.work_date >= CURRENT_DATE
 GROUP BY ss.id, ss.stylist_id, ss.work_date, ss.start_time, ss.end_time, s.full_name;
+
+
+-- ============================================
+-- BRANCHES MANAGEMENT - SUPABASE SCHEMA
+-- ============================================
+-- Purpose: Quản lý chi nhánh salon
+-- Date: February 2026
+
+-- ============================================
+-- 1. CREATE BRANCHES TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS branches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(255) NOT NULL,
+  slug VARCHAR(255) NOT NULL UNIQUE,
+  code VARCHAR(50) NOT NULL UNIQUE, -- Mã chi nhánh (VD: HN01, HCM01)
+  
+  -- Thông tin liên hệ
+  phone VARCHAR(20) NOT NULL,
+  email VARCHAR(255),
+  
+  -- Địa chỉ
+  address TEXT NOT NULL,
+  ward VARCHAR(100), -- Phường/Xã
+  district VARCHAR(100), -- Quận/Huyện
+  city VARCHAR(100) NOT NULL, -- Thành phố
+  country VARCHAR(100) DEFAULT 'Vietnam',
+  postal_code VARCHAR(20),
+  
+  -- Tọa độ (để tìm chi nhánh gần nhất)
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  
+  -- Thông tin hoạt động
+  is_active BOOLEAN DEFAULT true,
+  is_primary BOOLEAN DEFAULT false, -- Chi nhánh chính
+  opening_date DATE,
+  
+  -- Giờ làm việc (JSON format)
+  -- VD: {"monday": {"open": "08:00", "close": "20:00"}, ...}
+  working_hours JSONB DEFAULT '{}'::jsonb,
+  
+  -- Ảnh và mô tả
+  image_url TEXT,
+  description TEXT,
+  amenities TEXT[], -- Tiện ích: ["wifi", "parking", "air_conditioner"]
+  
+  -- Thống kê
+  total_stylists INTEGER DEFAULT 0,
+  total_bookings INTEGER DEFAULT 0,
+  average_rating DECIMAL(3,2) DEFAULT 0.00,
+  
+  -- SEO
+  meta_title VARCHAR(200),
+  meta_description TEXT,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================
+-- 2. CREATE BRANCH_STAFF TABLE (Many-to-Many)
+-- ============================================
+-- Liên kết nhân viên với chi nhánh
+CREATE TABLE IF NOT EXISTS branch_staff (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  
+  -- Role trong chi nhánh này
+  role VARCHAR(50) NOT NULL CHECK (
+    role IN ('manager', 'stylist', 'staff')
+  ),
+  
+  -- Trạng thái
+  is_active BOOLEAN DEFAULT true,
+  is_primary_branch BOOLEAN DEFAULT true, -- Chi nhánh chính của nhân viên
+  
+  -- Thời gian
+  joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  left_at TIMESTAMP WITH TIME ZONE,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  -- Constraint: Một user chỉ có một role tại một chi nhánh
+  CONSTRAINT unique_branch_staff UNIQUE(branch_id, user_id)
+);
+
+-- ============================================
+-- 3. CREATE BRANCH_ADMINS TABLE
+-- ============================================
+-- Quản lý quyền admin cho từng chi nhánh
+CREATE TABLE IF NOT EXISTS branch_admins (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  
+  -- Quyền hạn
+  can_manage_staff BOOLEAN DEFAULT true,
+  can_view_reports BOOLEAN DEFAULT true,
+  can_manage_bookings BOOLEAN DEFAULT true,
+  can_manage_services BOOLEAN DEFAULT false,
+  
+  -- Thời gian
+  assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  assigned_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  -- Constraint: Một user chỉ là admin của một chi nhánh một lần
+  CONSTRAINT unique_branch_admin UNIQUE(branch_id, user_id)
+);
+
+-- ============================================
+-- 4. CREATE INDEXES
+-- ============================================
+
+-- Branches indexes
+CREATE INDEX idx_branches_slug ON branches(slug);
+CREATE INDEX idx_branches_code ON branches(code);
+CREATE INDEX idx_branches_city ON branches(city);
+CREATE INDEX idx_branches_is_active ON branches(is_active);
+CREATE INDEX idx_branches_location ON branches(latitude, longitude);
+
+-- Branch Staff indexes
+CREATE INDEX idx_branch_staff_branch ON branch_staff(branch_id);
+CREATE INDEX idx_branch_staff_user ON branch_staff(user_id);
+CREATE INDEX idx_branch_staff_role ON branch_staff(role);
+CREATE INDEX idx_branch_staff_is_active ON branch_staff(is_active);
+
+-- Branch Admins indexes
+CREATE INDEX idx_branch_admins_branch ON branch_admins(branch_id);
+CREATE INDEX idx_branch_admins_user ON branch_admins(user_id);
+
+-- ============================================
+-- 5. TRIGGERS
+-- ============================================
+
+-- Trigger cập nhật updated_at cho branches
+CREATE OR REPLACE FUNCTION update_branches_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_branches_updated_at
+  BEFORE UPDATE ON branches
+  FOR EACH ROW
+  EXECUTE FUNCTION update_branches_updated_at();
+
+-- Trigger cập nhật updated_at cho branch_staff
+CREATE OR REPLACE FUNCTION update_branch_staff_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_branch_staff_updated_at
+  BEFORE UPDATE ON branch_staff
+  FOR EACH ROW
+  EXECUTE FUNCTION update_branch_staff_updated_at();
+
+-- Trigger cập nhật updated_at cho branch_admins
+CREATE OR REPLACE FUNCTION update_branch_admins_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_branch_admins_updated_at
+  BEFORE UPDATE ON branch_admins
+  FOR EACH ROW
+  EXECUTE FUNCTION update_branch_admins_updated_at();
+
+-- Trigger cập nhật total_stylists khi thêm/xóa stylist
+CREATE OR REPLACE FUNCTION update_branch_stylist_count()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.role = 'stylist' AND NEW.is_active = true THEN
+      UPDATE branches 
+      SET total_stylists = total_stylists + 1
+      WHERE id = NEW.branch_id;
+    END IF;
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF OLD.role = 'stylist' AND OLD.is_active = true 
+       AND (NEW.role != 'stylist' OR NEW.is_active = false) THEN
+      UPDATE branches 
+      SET total_stylists = total_stylists - 1
+      WHERE id = OLD.branch_id;
+    ELSIF (OLD.role != 'stylist' OR OLD.is_active = false)
+          AND NEW.role = 'stylist' AND NEW.is_active = true THEN
+      UPDATE branches 
+      SET total_stylists = total_stylists + 1
+      WHERE id = NEW.branch_id;
+    END IF;
+  ELSIF TG_OP = 'DELETE' THEN
+    IF OLD.role = 'stylist' AND OLD.is_active = true THEN
+      UPDATE branches 
+      SET total_stylists = total_stylists - 1
+      WHERE id = OLD.branch_id;
+    END IF;
+  END IF;
+  
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_branch_stylist_count
+  AFTER INSERT OR UPDATE OR DELETE ON branch_staff
+  FOR EACH ROW
+  EXECUTE FUNCTION update_branch_stylist_count();
+
+-- ============================================
+-- 6. ROW LEVEL SECURITY (RLS)
+-- ============================================
+
+ALTER TABLE branches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE branch_staff ENABLE ROW LEVEL SECURITY;
+ALTER TABLE branch_admins ENABLE ROW LEVEL SECURITY;
+
+-- Service role full access
+CREATE POLICY "Service role full access branches"
+  ON branches FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access branch_staff"
+  ON branch_staff FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access branch_admins"
+  ON branch_admins FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+-- Public can view active branches
+CREATE POLICY "Anyone can view active branches"
+  ON branches FOR SELECT
+  TO anon, authenticated
+  USING (is_active = true);
+
+-- Authenticated can view all branches
+CREATE POLICY "Authenticated can view all branches"
+  ON branches FOR SELECT
+  TO authenticated
+  USING (true);
+
+-- Staff can view their branch assignments
+CREATE POLICY "Staff can view their branch assignments"
+  ON branch_staff FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+-- Branch admins can view their assignments
+CREATE POLICY "Admins can view their branch admin assignments"
+  ON branch_admins FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+-- ============================================
+-- 7. FUNCTIONS
+-- ============================================
+
+-- Function: Check if user is admin of a branch
+CREATE OR REPLACE FUNCTION is_branch_admin(
+  p_user_id UUID,
+  p_branch_id UUID
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_is_admin BOOLEAN;
+BEGIN
+  -- Check if user is SuperAdmin or Admin
+  SELECT EXISTS(
+    SELECT 1 FROM profiles
+    WHERE id = p_user_id
+      AND role IN ('admin', 'superadmin')
+  ) INTO v_is_admin;
+  
+  IF v_is_admin THEN
+    RETURN true;
+  END IF;
+  
+  -- Check if user is branch admin
+  SELECT EXISTS(
+    SELECT 1 FROM branch_admins
+    WHERE user_id = p_user_id
+      AND branch_id = p_branch_id
+  ) INTO v_is_admin;
+  
+  RETURN v_is_admin;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function: Get user's branches
+CREATE OR REPLACE FUNCTION get_user_branches(p_user_id UUID)
+RETURNS TABLE(
+  branch_id UUID,
+  branch_name VARCHAR,
+  role VARCHAR,
+  is_admin BOOLEAN
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    bs.branch_id,
+    b.name as branch_name,
+    bs.role,
+    EXISTS(
+      SELECT 1 FROM branch_admins ba
+      WHERE ba.user_id = p_user_id
+        AND ba.branch_id = bs.branch_id
+    ) as is_admin
+  FROM branch_staff bs
+  JOIN branches b ON bs.branch_id = b.id
+  WHERE bs.user_id = p_user_id
+    AND bs.is_active = true
+    AND b.is_active = true
+  ORDER BY bs.is_primary_branch DESC, b.name;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================
+-- 8. VIEWS
+-- ============================================
+
+-- View: Branches with full details
+CREATE OR REPLACE VIEW branches_with_details AS
+SELECT 
+  b.*,
+  (
+    SELECT COUNT(*) 
+    FROM branch_staff bs 
+    WHERE bs.branch_id = b.id 
+      AND bs.is_active = true
+  ) as total_staff,
+  (
+    SELECT COUNT(*) 
+    FROM branch_staff bs 
+    WHERE bs.branch_id = b.id 
+      AND bs.role = 'stylist'
+      AND bs.is_active = true
+  ) as active_stylists,
+  (
+    SELECT COUNT(*) 
+    FROM branch_staff bs 
+    WHERE bs.branch_id = b.id 
+      AND bs.role = 'manager'
+      AND bs.is_active = true
+  ) as managers,
+  (
+    SELECT json_agg(
+      json_build_object(
+        'id', p.id,
+        'fullName', p.full_name,
+        'email', p.email,
+        'avatarUrl', p.avatar_url
+      )
+    )
+    FROM branch_admins ba
+    JOIN profiles p ON ba.user_id = p.id
+    WHERE ba.branch_id = b.id
+  ) as admins
+FROM branches b;
+
+-- View: Branch staff with details
+CREATE OR REPLACE VIEW branch_staff_with_details AS
+SELECT 
+  bs.*,
+  b.name as branch_name,
+  b.city as branch_city,
+  p.full_name,
+  p.email,
+  p.phone,
+  p.avatar_url,
+  p.role as user_role,
+  EXISTS(
+    SELECT 1 FROM branch_admins ba
+    WHERE ba.user_id = bs.user_id
+      AND ba.branch_id = bs.branch_id
+  ) as is_branch_admin
+FROM branch_staff bs
+JOIN branches b ON bs.branch_id = b.id
+JOIN profiles p ON bs.user_id = p.id;
+
+-- ============================================
+-- 9. SEED DATA (Example)
+-- ============================================
+
+-- Insert sample branches
+INSERT INTO branches (name, slug, code, phone, address, city, latitude, longitude, is_primary) VALUES
+('Chi nhánh Hà Nội - Hoàn Kiếm', 'ha-noi-hoan-kiem', 'HN01', '024-1234-5678', '123 Phố Huế, Hoàn Kiếm', 'Hà Nội', 21.0285, 105.8542, true),
+('Chi nhánh Hà Nội - Cầu Giấy', 'ha-noi-cau-giay', 'HN02', '024-8765-4321', '456 Trần Duy Hưng, Cầu Giấy', 'Hà Nội', 21.0333, 105.7938, false),
+('Chi nhánh TP.HCM - Quận 1', 'hcm-quan-1', 'HCM01', '028-1234-5678', '789 Nguyễn Huệ, Quận 1', 'TP. Hồ Chí Minh', 10.7756, 106.7019, false),
+('Chi nhánh Đà Nẵng', 'da-nang', 'DN01', '0236-123-456', '321 Bạch Đằng, Hải Châu', 'Đà Nẵng', 16.0544, 108.2022, false)
+ON CONFLICT (slug) DO NOTHING;
+
+-- ============================================
+-- 10. GRANT PERMISSIONS
+-- ============================================
+
+GRANT ALL ON branches TO authenticated;
+GRANT ALL ON branch_staff TO authenticated;
+GRANT ALL ON branch_admins TO authenticated;
+
+GRANT ALL ON branches TO service_role;
+GRANT ALL ON branch_staff TO service_role;
+GRANT ALL ON branch_admins TO service_role;

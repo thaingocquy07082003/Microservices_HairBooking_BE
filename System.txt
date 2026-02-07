@@ -27,7 +27,8 @@
 │   (Port 3004)  │    │   (Port 3005)     │    │   (Port 3006)   │
 │                │    │                   │    │                 │
 │ - Transactions │    │ - Email/SMS       │    │ - Reports       │
-│ - Invoices     │    │ - Push notifications│   │ - Dashboards    │
+│ - Invoices     │    │ - Push notifications│  │ - Dashboards    │
 │ - Refunds      │    │ - Templates       │    │ - Statistics    │
-│ - History      │    │ - Event-driven    │    │ - Insights      │
+│ - History      |    |                   |    |                 |
+|                │    │ - Event-driven    │    │ - Insights      │
 └────────────────┘    └───────────────────┘    └─────────────────┘
