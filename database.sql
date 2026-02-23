@@ -1535,3 +1535,36 @@ GRANT ALL ON branch_admins TO authenticated;
 GRANT ALL ON branches TO service_role;
 GRANT ALL ON branch_staff TO service_role;
 GRANT ALL ON branch_admins TO service_role;
+
+
+-- ============================================
+-- SEPAY TRANSACTIONS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS sepay_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_id VARCHAR(255) UNIQUE,           -- ID giao dịch từ Sepay
+  account_number VARCHAR(100),                   -- Số tài khoản
+  transaction_date TIMESTAMP WITH TIME ZONE,     -- Thời gian giao dịch
+  transfer_amount DECIMAL(18,2) DEFAULT 0,       -- Số tiền chuyển
+  content TEXT,                                  -- Nội dung giao dịch (quan trọng nhất)
+  reference_number VARCHAR(255),                 -- Mã tham chiếu
+  raw_body JSONB,                                -- Raw payload từ Sepay
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  -- Index để search nhanh theo content
+  CONSTRAINT sepay_transactions_transaction_id_unique UNIQUE(transaction_id)
+);
+
+-- Indexes
+CREATE INDEX idx_sepay_transactions_content ON sepay_transactions USING gin(to_tsvector('simple', content));
+CREATE INDEX idx_sepay_transactions_content_like ON sepay_transactions(content);
+CREATE INDEX idx_sepay_transactions_account ON sepay_transactions(account_number);
+CREATE INDEX idx_sepay_transactions_date ON sepay_transactions(transaction_date DESC);
+CREATE INDEX idx_sepay_transactions_reference ON sepay_transactions(reference_number);
+
+-- RLS
+ALTER TABLE sepay_transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access sepay_transactions"
+  ON sepay_transactions FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
