@@ -31,6 +31,8 @@ import { User } from '@app/common/decorators/user.decorator';
 import { ResponseDto } from '@app/common/dto/response.dto';
 import { HttpStatus as HttpStatusEnum } from '@app/common/constants/http-status.enum';
 import { HttpMessage } from '@app/common/constants/http-message.enum';
+import { KafkaTopics, InvoiceSendEmailEvent } from '@app/kafka';
+import { MailService } from '../mail/mail.service';
 
 interface AuthenticatedUser {
   id: string;
@@ -40,7 +42,10 @@ interface AuthenticatedUser {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly mailService: MailService,
+  ) {}
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
@@ -231,6 +236,19 @@ export class AuthController {
       return { valid: isValid };
     } catch {
       return { valid: false };
+    }
+  }
+
+  // ==================== INVOICE EMAIL HANDLER ====================
+  @MessagePattern(KafkaTopics.INVOICE_EMAIL_SEND)
+  async handleInvoiceEmailSend(@Payload() event: InvoiceSendEmailEvent) {
+    try {
+      console.log(`[Kafka] Received invoice email event for: ${event.email}`);
+      await this.mailService.sendInvoiceEmailFromEvent(event);
+      return { success: true, message: `Invoice email sent to ${event.email}` };
+    } catch (error) {
+      console.error(`[Kafka] Failed to send invoice email:`, error);
+      return { success: false, error: (error as Error).message };
     }
   }
 }

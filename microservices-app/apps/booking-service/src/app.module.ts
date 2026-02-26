@@ -5,6 +5,7 @@ import { SchedulingModule } from './scheduling/scheduling.module';
 import { AvailabilityModule } from './availability/availability.module';
 import { QueueModule } from './queue/queue.module';
 import { PaymentModule } from './payment/payment.module';
+import { InvoiceModule } from './invoice/invoice.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { PaymentModule } from './payment/payment.module';
     AvailabilityModule,
     QueueModule,
     PaymentModule,
+    InvoiceModule,
   ],
 })
 export class AppModule {}

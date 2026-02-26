@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; color: #333; max-width: 650px; margin: 0 auto; padding: 20px; }
+    .header { background: #2c7be5; color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: bold;
+             background: {{#if isPaid}}#28a745{{else}}#ffc107{{/if}};
+             color: {{#if isPaid}}white{{else}}#333{{/if}}; }
+    .section { background: #f8f9fa; border-radius: 6px; padding: 16px; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #2c7be5; color: white; padding: 10px; text-align: left; }
+    td { padding: 10px; border-bottom: 1px solid #dee2e6; }
+    .total-row td { font-weight: bold; background: #e9f0fb; }
+    .footer { text-align: center; color: #888; font-size: 13px; margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2 style="margin:0">HÓA ĐƠN DỊCH VỤ</h2>
+    <p style="margin:8px 0 0">{{invoiceNumber}}</p>
+  </div>
+
+  <div style="padding: 20px; border: 1px solid #dee2e6; border-top: none; border-radius: 0 0 8px 8px;">
+    <p>Xin chào <strong>{{customerName}}</strong>,</p>
+    <p>Trạng thái hóa đơn của bạn: <span class="badge">{{status}}</span></p>
+
+    <div class="section">
+      <strong>Thông tin dịch vụ</strong><br>
+      {{#if branchName}}<p>Chi nhánh: {{branchName}}</p>{{/if}}
+      {{#if stylistName}}<p>Stylist: {{stylistName}}</p>{{/if}}
+      <p>Ngày tạo: {{createdAt}}</p>
+      {{#if isPaid}}<p>Thanh toán lúc: {{paidAt}} — Phương thức: {{paymentMethod}}</p>{{/if}}
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Dịch vụ</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr>
+      </thead>
+      <tbody>
+        {{#each items}}
+        <tr>
+          <td>{{this.name}}</td>
+          <td>{{this.quantity}}</td>
+          <td>{{this.unitPrice}} đ</td>
+          <td>{{this.totalPrice}} đ</td>
+        </tr>
+        {{/each}}
+        <tr><td colspan="3" style="text-align:right">Tạm tính</td><td>{{subtotal}} đ</td></tr>
+        {{#if discountAmount}}<tr><td colspan="3" style="text-align:right">Giảm giá</td><td>- {{discountAmount}} đ</td></tr>{{/if}}
+        {{#if taxAmount}}<tr><td colspan="3" style="text-align:right">Thuế</td><td>{{taxAmount}} đ</td></tr>{{/if}}
+        <tr class="total-row"><td colspan="3" style="text-align:right">TỔNG CỘNG</td><td>{{totalAmount}} đ</td></tr>
+      </tbody>
+    </table>
+
+    <div class="footer">
+      <p>Cảm ơn bạn đã sử dụng dịch vụ!</p>
+      <p>Đây là email tự động, vui lòng không trả lời.</p>
+    </div>
+  </div>
+</body>
+</html>

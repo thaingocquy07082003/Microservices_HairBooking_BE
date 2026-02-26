@@ -3,6 +3,8 @@
 import { Injectable } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
+import { InvoiceDetailed } from '@app/common/entities/invoice.entity';
+import { InvoiceSendEmailEvent } from '@app/kafka';
 
 @Injectable()
 export class MailService {
@@ -88,6 +90,71 @@ export class MailService {
       console.log(`Verification success email sent to ${email}`);
     } catch (error) {
       console.error(`Failed to send verification success email to ${email}:`, error);
+      throw error;
+    }
+  }
+
+  async sendInvoiceEmail(email: string, invoice: InvoiceDetailed): Promise<void> {
+    try {
+      await this.mailerService.sendMail({
+        to: email,
+        subject: `Hóa đơn ${invoice.invoiceNumber} - ${invoice.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán'}`,
+        template: './invoice',
+        context: {
+          invoiceNumber: invoice.invoiceNumber,
+          customerName: invoice.customerName,
+          status: invoice.status === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán',
+          isPaid: invoice.status === 'paid',
+          items: invoice.items,
+          subtotal: invoice.subtotal.toLocaleString('vi-VN'),
+          discountAmount: invoice.discountAmount.toLocaleString('vi-VN'),
+          taxAmount: invoice.taxAmount.toLocaleString('vi-VN'),
+          totalAmount: invoice.totalAmount.toLocaleString('vi-VN'),
+          paymentMethod: invoice.paymentMethod,
+          paidAt: invoice.paidAt?.toLocaleString('vi-VN'),
+          branchName: invoice.branchName,
+          stylistName: invoice.stylistName,
+          createdAt: invoice.createdAt.toLocaleString('vi-VN'),
+        },
+      });
+      console.log(`Invoice email sent to ${email}`);
+    } catch (error) {
+      console.error(`Failed to send invoice email:`, error);
+      throw error;
+    }
+  }
+
+  async sendInvoiceEmailFromEvent(event: InvoiceSendEmailEvent): Promise<void> {
+    try {
+      const isPaid = event.status === 'paid';
+      await this.mailerService.sendMail({
+        to: event.email,
+        subject: `Hóa đơn ${event.invoiceNumber} - ${isPaid ? 'Đã thanh toán' : 'Chờ thanh toán'}`,
+        template: './invoice',
+        context: {
+          invoiceNumber: event.invoiceNumber,
+          customerName: event.customerName,
+          status: isPaid ? 'Đã thanh toán' : 'Chưa thanh toán',
+          isPaid,
+          items: event.items.map(item => ({
+            ...item,
+            unitPrice: item.unitPrice.toLocaleString('vi-VN'),
+            totalPrice: item.totalPrice.toLocaleString('vi-VN'),
+          })),
+          subtotal: event.subtotal.toLocaleString('vi-VN'),
+          discountAmount: event.discountAmount.toLocaleString('vi-VN'),
+          taxAmount: event.taxAmount.toLocaleString('vi-VN'),
+          totalAmount: event.totalAmount.toLocaleString('vi-VN'),
+          paymentMethod: event.paymentMethod,
+          paidAt: event.paidAt ? new Date(event.paidAt).toLocaleString('vi-VN') : null,
+          branchName: event.branchName,
+          stylistName: event.stylistName,
+          createdAt: new Date(event.createdAt).toLocaleString('vi-VN'),
+        },
+      });
+      console.log(`Invoice email sent to ${event.email} via Kafka event`);
+    } catch (error) {
+      console.error(`Failed to send invoice email from Kafka event:`, error);
       throw error;
     }
   }

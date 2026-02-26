@@ -31,6 +31,9 @@ export enum KafkaTopics {
   PAYMENT_COMPLETED = 'payment.completed',
   PAYMENT_FAILED = 'payment.failed',
   PAYMENT_REFUNDED = 'payment.refunded',
+
+  // Invoice Events
+  INVOICE_EMAIL_SEND = 'invoice.email.send',
 }
 
 // Base Event Interface
@@ -151,4 +154,28 @@ export interface PaymentFailedEvent extends BaseEvent {
   bookingId: string;
   userId: string;
   error: string;
+}
+
+// Invoice Events
+export interface InvoiceSendEmailEvent extends BaseEvent {
+  email: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  customerName: string;
+  status: string;
+  items: Array<{
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+  }>;
+  subtotal: number;
+  discountAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  paymentMethod?: string;
+  paidAt?: Date;
+  branchName?: string;
+  stylistName?: string;
+  createdAt: Date;
 }
