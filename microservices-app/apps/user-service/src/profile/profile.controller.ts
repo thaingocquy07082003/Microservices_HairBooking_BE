@@ -9,6 +9,9 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseInterceptors,
+  BadRequestException,
+  UploadedFile,
 } from '@nestjs/common';
 import { ProfilesService } from './profile.service';
 import {
@@ -20,6 +23,8 @@ import { JwtAuthGuard, Role, User } from '@app/common';
 import { RolesGuard } from '@app/common/strategies/roles.guard';
 import { Roles } from '@app/common/decorators/roles.decorator';
 import { ProfileUpdateGuard, ViewProfilesListGuard } from './guards/profile.guard';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 
 @Controller('profiles')
 export class ProfilesController {
@@ -52,11 +57,24 @@ export class ProfilesController {
   @Put('me')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(new BadRequestException('Chỉ chấp nhận file ảnh'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
   async updateMyProfile(
     @User() user: any,
     @Body() dto: UpdateProfileDto,
+    @UploadedFile() file?: Express.Multer.File,
   ) {
-    const profile = await this.profilesService.updateOwnProfile(user.id, dto);
+    const profile = await this.profilesService.updateOwnProfile(user.id, dto, file);
     return {
       statusCode: HttpStatus.OK,
       message: 'Cập nhật profile thành công',

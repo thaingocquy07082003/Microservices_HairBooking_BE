@@ -17,7 +17,7 @@ export class FileUploadService {
       const stream = cloudinary.uploader.upload_stream(
         {
           public_id: file.originalname,
-          folder: 'products',
+          folder: 'avatar_uploads',
           resource_type: 'auto',
         },
         (error, result) => {

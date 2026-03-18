@@ -7,6 +7,7 @@ import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '@app/common';
 import { ProfileUpdateGuard, ViewProfilesListGuard } from './guards/profile.guard';
+import { FileUploadService } from '@app/common';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { ProfileUpdateGuard, ViewProfilesListGuard } from './guards/profile.guar
     }),
   ],
   controllers: [ProfilesController],
-  providers: [ProfilesService, JwtStrategy, ProfileUpdateGuard, ViewProfilesListGuard],
+  providers: [ProfilesService, JwtStrategy, ProfileUpdateGuard, ViewProfilesListGuard , FileUploadService],
   exports: [ProfilesService],
 })
 export class ProfilesModule {}

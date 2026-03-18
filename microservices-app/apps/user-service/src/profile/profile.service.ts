@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { RedisService } from '@app/redis';
-import { Role } from '@app/common';
+import { FileUploadService, Role } from '@app/common';
 import { UpdateProfileDto, UpdateProfileByAdminDto, GetProfilesFilterDto } from './dto/profile.dto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
@@ -36,6 +36,7 @@ export class ProfilesService {
   constructor(
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
+    private readonly fileUploadService: FileUploadService
   ) {
     // Initialize Supabase client
     this.supabase = createClient(
@@ -167,21 +168,22 @@ export class ProfilesService {
   /**
    * Cập nhật profile của chính mình (User tự cập nhật)
    */
-  async updateOwnProfile(userId: string, dto: UpdateProfileDto): Promise<Profile> {
-    // Verify profile exists
+  async updateOwnProfile(userId: string, dto: UpdateProfileDto,file?: Express.Multer.File): Promise<Profile> {
     await this.getProfileById(userId);
-
-    // Build update data (chỉ cho phép update những field an toàn)
     const updateData: any = {};
     if (dto.fullName) updateData.full_name = dto.fullName;
     if (dto.phone !== undefined) updateData.phone = dto.phone;
-    if (dto.avatarUrl !== undefined) updateData.avatar_url = dto.avatarUrl;
+
+    // Upload ảnh lên Cloudinary nếu có file
+    if (file) {
+      const avatarUrl = await this.fileUploadService.uploadImage(file);
+      updateData.avatar_url = avatarUrl;
+    }
 
     if (Object.keys(updateData).length === 0) {
       throw new BadRequestException('Không có dữ liệu để cập nhật');
     }
 
-    // Update profile
     const { data: profile, error } = await this.supabase
       .from('profiles')
       .update(updateData)
@@ -193,9 +195,7 @@ export class ProfilesService {
       throw new BadRequestException(`Lỗi khi cập nhật profile: ${error.message}`);
     }
 
-    // Invalidate cache
     await this.invalidateProfileCache(userId);
-
     return this.mapProfileFromDb(profile);
   }
 
