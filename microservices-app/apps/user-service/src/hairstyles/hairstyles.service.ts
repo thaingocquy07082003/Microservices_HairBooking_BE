@@ -225,6 +225,49 @@ export class HairstylesService {
     return result;
   }
 
+  async getStylistsByHairstyle(hairstyleId: string): Promise<Stylist[]> {
+    // Verify hairstyle exists
+    await this.getHairstyleById(hairstyleId);
+    const cacheKey = `stylists:hairstyle:${hairstyleId}`;
+    const cached = await this.redisService.get<Stylist[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    // Get stylist IDs linked to this hairstyle
+    const { data: links, error: linkError } = await this.supabase
+      .from('hairstyle_stylists')
+      .select('stylist_id')
+      .eq('hairstyle_id', hairstyleId);
+
+    if (linkError) {
+      throw new BadRequestException(`Lỗi khi lấy danh sách thợ cắt tóc: ${linkError.message}`);
+    }
+
+    const stylistIds = links?.map(l => l.stylist_id) || [];
+
+    if (stylistIds.length === 0) {
+      return [];
+    }
+    const { data, error } = await this.supabase
+      .from('stylists')
+      .select('*')
+      .in('id', stylistIds)
+      .eq('is_available', true)
+      .order('rating', { ascending: false });
+
+    if (error) {
+      throw new BadRequestException(`Lỗi khi lấy danh sách thợ cắt tóc: ${error.message}`);
+    }
+
+    const stylists = (data || []).map(s => this.mapStylistFromDb(s));
+
+    // Cache result (10 minutes)
+    await this.redisService.set(cacheKey, stylists, this.CACHE_TTL.LIST);
+
+    return stylists;
+  }
+
   async getHairstylesByStylist(stylistId: string): Promise<Hairstyle[]> {
     // Verify stylist exists
     await this.getStylistById(stylistId);
@@ -539,6 +582,7 @@ export class HairstylesService {
   // Cache invalidation methods
   private async invalidateHairstyleCache(id: string): Promise<void> {
     await this.redisService.delete(this.CACHE_KEYS.hairstyle(id));
+    await this.redisService.delete(`stylists:hairstyle:${id}`); 
   }
 
   private async invalidateHairstylesCache(): Promise<void> {

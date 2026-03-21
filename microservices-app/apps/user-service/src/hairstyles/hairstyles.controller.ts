@@ -85,6 +85,23 @@ export class HairstylesController {
   }
 
   /**
+   * [PUBLIC] Xem các thợ cắt tóc có thể thực hiện một kiểu tóc
+   * Roles: ALL (không cần đăng nhập)
+   * Use case: Khách chọn kiểu tóc rồi xem thợ nào làm được
+   */
+  @Get(':hairstyleId/stylists')
+  @HttpCode(HttpStatus.OK)
+  async getStylistsByHairstyle(@Param('hairstyleId') hairstyleId: string) {
+    const stylists = await this.hairstylesService.getStylistsByHairstyle(hairstyleId);
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Lấy danh sách thợ cắt tóc theo kiểu tóc thành công',
+      data: stylists,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
    * [PUBLIC] Xem tất cả thợ cắt tóc
    * Roles: ALL (không cần đăng nhập)
    */

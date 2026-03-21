@@ -292,7 +292,7 @@ export class CheckAvailabilityDto {
 // ==================== GET AVAILABLE SLOTS ====================
 
 export class GetAvailableSlotsDto {
-  @Type(() => Date)
+  @Transform(({ value }) => new Date(value))
   @IsDate()
   date: Date;
 
