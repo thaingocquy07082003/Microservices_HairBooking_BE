@@ -16,13 +16,11 @@ export class HairTryOnService {
   private readonly logger = new Logger(HairTryOnService.name);
   private supabase: SupabaseClient;
 
-  // YouCam S2S API config — v2.1
   private readonly YOUCAM_BASE_URL = 'https://yce-api-01.makeupar.com/s2s/v2.1';
   private readonly YOUCAM_HAIR_TRANSFER_URL = `${this.YOUCAM_BASE_URL}/task/hair-transfer`;
 
-  // Polling config
   private readonly POLL_INTERVAL_MS = 2000;
-  private readonly POLL_MAX_ATTEMPTS = 30; // 30 × 2s = 60s timeout
+  private readonly POLL_MAX_ATTEMPTS = 30;
 
   constructor(
     private readonly configService: ConfigService,
@@ -34,45 +32,29 @@ export class HairTryOnService {
     );
   }
 
-  /**
-   * Main entry point: try on a hairstyle using YouCam API
-   *
-   * Luồng:
-   *  1. Lấy hairstyle (name + image_url) từ DB
-   *  2. Upload ảnh người dùng lên Cloudinary → lấy public URL
-   *  3. Gửi { src_image_url, template_id | template_url } → YouCam → task_id
-   *  4. Poll cho đến khi task_status = "success"
-   *  5. Trả về result image URL
-   *
-   * Tại sao dùng Cloudinary thay vì gọi YouCam /file endpoint?
-   *  YouCam v2 không có endpoint upload file riêng — nó nhận
-   *  src_image_url (URL công khai) hoặc src_file_id (ID từ lần upload
-   *  trước đó trong hệ thống YouCam, như trong test.js). Cách đơn giản
-   *  nhất là upload ảnh người dùng lên Cloudinary rồi truyền URL vào.
-   */
   async tryOnHairstyle(
     hairstyleId: string,
     userPhotoFile: Express.Multer.File,
   ): Promise<HairTryOnResultDto> {
-    // ── Step 1: Lấy hairstyle từ DB ──────────────────────────────────
+    // Step 1: Lấy hairstyle từ DB
     const hairstyle = await this.getHairstyleById(hairstyleId);
     this.logger.log(`[TryOn] Hairstyle: "${hairstyle.name}" | template: ${hairstyle.image_url}`);
 
-    // ── Step 2: Upload ảnh người dùng lên Cloudinary → lấy URL ───────
-    const srcImageUrl = await this.fileUploadService.uploadImage(userPhotoFile);
-    this.logger.log(`[TryOn] User photo uploaded: ${srcImageUrl}`);
+    // Step 2: Upload ảnh người dùng lên Cloudinary → lấy URL công khai
+    const srcFileUrl = await this.fileUploadService.uploadImage(userPhotoFile);
+    this.logger.log(`[TryOn] User photo uploaded: ${srcFileUrl}`);
 
-    // ── Step 3: Xác định template payload ────────────────────────────
-    // - Nếu image_url trong DB là YouCam template_id (không bắt đầu bằng http)
-    //   thì dùng template_id (như trong test.js: "all_highlight_pixie_cut")
-    // - Ngược lại dùng src_image_url cho template (ảnh kiểu tóc công khai)
+    // Step 3: Xác định template payload
+    // YouCam v2.1 chấp nhận:
+    //   - template_id  nếu image_url là YouCam template ID (vd: "all_highlight_pixie_cut")
+    //   - ref_file_url nếu là URL ảnh công khai (Cloudinary, Unsplash…)
     const templatePayload = this.buildTemplatePayload(hairstyle.image_url);
 
-    // ── Step 4: Gọi YouCam hair-transfer ─────────────────────────────
-    const taskId = await this.startHairTransferTask(srcImageUrl, templatePayload);
+    // Step 4: Gọi YouCam hair-transfer → nhận task_id
+    const taskId = await this.startHairTransferTask(srcFileUrl, templatePayload);
     this.logger.log(`[TryOn] Task started: ${taskId}`);
 
-    // ── Step 5: Poll kết quả ─────────────────────────────────────────
+    // Step 5: Poll kết quả
     const resultImageUrl = await this.pollTaskUntilDone(taskId);
     this.logger.log(`[TryOn] Result: ${resultImageUrl}`);
 
@@ -85,11 +67,8 @@ export class HairTryOnService {
     };
   }
 
-  // ════════════════════════════════════════════════════════════════════
-  // PRIVATE HELPERS
-  // ════════════════════════════════════════════════════════════════════
+  // ── PRIVATE HELPERS ──────────────────────────────────────────────────
 
-  /** Lấy hairstyle từ Supabase */
   private async getHairstyleById(
     id: string,
   ): Promise<{ name: string; image_url: string }> {
@@ -112,30 +91,37 @@ export class HairTryOnService {
   }
 
   /**
-   * Xác định template payload gửi cho YouCam:
-   *  - template_id  → nếu image_url lưu trong DB là YouCam template ID
-   *                    (vd: "all_highlight_pixie_cut") — không bắt đầu bằng http
-   *  - template_url → nếu là URL ảnh công khai (Cloudinary, Unsplash…)
+   * Xác định template payload:
+   *   - image_url KHÔNG bắt đầu bằng "http" → là YouCam template_id
+   *   - image_url bắt đầu bằng "http"       → là URL công khai, dùng ref_file_url
    *
-   * Khuyến nghị: thêm cột `youcam_template_id` vào bảng hairstyles để
-   * lưu template_id chính thức từ YouCam, sẽ cho kết quả chính xác hơn.
+   * YouCam API v2.1 field names:
+   *   src_file_url  = ảnh người dùng (URL công khai)
+   *   template_id   = ID template kiểu tóc từ YouCam
+   *   ref_file_url  = ảnh kiểu tóc từ URL bên ngoài
    */
   private buildTemplatePayload(imageUrl: string): Record<string, string> {
     const isYouCamTemplateId = !imageUrl.startsWith('http') && !imageUrl.startsWith('/');
     return isYouCamTemplateId
       ? { template_id: imageUrl }
-      : { template_url: imageUrl };
+      : { ref_file_url: imageUrl }; // ✅ Đúng field name, không phải template_url
   }
 
   /**
    * POST /s2s/v2.1/task/hair-transfer
-   * Body: { src_image_url, template_id } hoặc { src_image_url, template_url }
+   *
+   * Body hợp lệ (một trong các dạng):
+   *   { src_file_url, template_id }
+   *   { src_file_url, ref_file_url }
+   *   { src_file_id,  template_id }
+   *
+   * ❌ KHÔNG dùng src_image_url hay template_url — YouCam không nhận
    */
   private async startHairTransferTask(
-    srcImageUrl: string,
+    srcFileUrl: string,
     templatePayload: Record<string, string>,
   ): Promise<string> {
-    const body = { src_image_url: srcImageUrl, ...templatePayload };
+    const body = { src_file_url: srcFileUrl, ...templatePayload }; // ✅ src_file_url
 
     this.logger.log(`[YouCam] POST hair-transfer body: ${JSON.stringify(body)}`);
 
@@ -161,7 +147,7 @@ export class HairTryOnService {
           `[YouCam Start] ${err.response?.status} – ${JSON.stringify(err.response?.data)}`,
         );
         throw new BadRequestException(
-          `Lỗi gọi YouCam hair-transfer: ${err.response?.data?.message ?? err.message}`,
+          `Lỗi gọi YouCam hair-transfer: ${err.response?.data?.error ?? err.message}`,
         );
       }
       throw err;
@@ -186,15 +172,12 @@ export class HairTryOnService {
         });
 
         const taskStatus: string = response.data?.data?.task_status;
-        this.logger.log(
-          `[TryOn Poll] attempt=${attempt} status=${taskStatus}`,
-        );
+        this.logger.log(`[TryOn Poll] attempt=${attempt} status=${taskStatus}`);
 
         if (taskStatus === 'success') {
-          // Lấy URL ảnh kết quả (cấu trúc tuỳ YouCam API version)
           const results = response.data?.data?.results;
           const resultUrl: string | undefined =
-            results?.[0]?.image_url ??   // Cấu trúc phổ biến
+            results?.[0]?.image_url ??
             results?.[0]?.url ??
             results?.image_url ??
             results?.url;
@@ -211,14 +194,11 @@ export class HairTryOnService {
         if (taskStatus === 'error') {
           const errMsg =
             response.data?.data?.error_message ?? 'YouCam task thất bại';
-          throw new InternalServerErrorException(
-            `YouCam task lỗi: ${errMsg}`,
-          );
+          throw new InternalServerErrorException(`YouCam task lỗi: ${errMsg}`);
         }
 
-        // Nếu status là 'processing' hoặc 'pending' thì tiếp tục poll
+        // status là 'processing' hoặc 'pending' → tiếp tục poll
       } catch (err) {
-        // Chỉ rethrow lỗi nghiệp vụ, còn lỗi mạng tạm thời thì tiếp tục poll
         if (
           err instanceof InternalServerErrorException ||
           err instanceof BadRequestException
@@ -226,9 +206,7 @@ export class HairTryOnService {
           throw err;
         }
         if (axios.isAxiosError(err) && err.response?.status !== undefined) {
-          throw new InternalServerErrorException(
-            `Lỗi poll task: ${err.message}`,
-          );
+          throw new InternalServerErrorException(`Lỗi poll task: ${err.message}`);
         }
         this.logger.warn(
           `[TryOn Poll] attempt=${attempt} – network error, retrying…`,
@@ -241,7 +219,6 @@ export class HairTryOnService {
     );
   }
 
-  /** Lấy API key từ config */
   private get youcamApiKey(): string {
     return this.configService.getOrThrow<string>('YOUCAM_API_KEY');
   }
