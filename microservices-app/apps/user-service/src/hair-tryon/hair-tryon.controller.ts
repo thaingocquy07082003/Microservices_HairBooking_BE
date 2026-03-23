@@ -18,33 +18,14 @@ import { JwtAuthGuard } from '@app/common';
 @Controller('hairstyles/try-on')
 export class HairTryOnController {
   constructor(private readonly hairTryOnService: HairTryOnService) {}
-
-  /**
-   * [AUTHENTICATED] Thử kiểu tóc ảo bằng YouCam AI
-   *
-   * POST /api/v1/hairstyles/try-on
-   *
-   * Body (multipart/form-data):
-   *   - hairstyleId  string (UUID)   — ID kiểu tóc trong DB
-   *   - userPhoto    File (image/*)  — Ảnh khuôn mặt người dùng
-   *
-   * Response:
-   *   {
-   *     "taskId": "...",
-   *     "status": "success",
-   *     "resultImageUrl": "https://...",
-   *     "hairstyleId": "...",
-   *     "hairstyleName": "Undercut Classic"
-   *   }
-   */
   @Post()
-  @UseGuards(JwtAuthGuard)           // Yêu cầu đăng nhập
+  @UseGuards(JwtAuthGuard)   
   @HttpCode(HttpStatus.OK)
   @UseInterceptors(
     FileInterceptor('userPhoto', {
-      storage: memoryStorage(),        // Giữ file trong RAM để upload YouCam
+      storage: memoryStorage(),  
       limits: {
-        fileSize: 10 * 1024 * 1024,   // Tối đa 10MB
+        fileSize: 10 * 1024 * 1024,  
       },
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.startsWith('image/')) {
