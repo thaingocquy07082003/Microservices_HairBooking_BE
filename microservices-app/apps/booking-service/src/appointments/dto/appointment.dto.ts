@@ -199,7 +199,7 @@ export class FilterAppointmentDto {
 
 export class CancelAppointmentDto {
   @IsString()
-  @MinLength(10, { message: 'Lý do hủy phải có ít nhất 10 ký tự' })
+  @MinLength(3, { message: 'Lý do hủy phải có ít nhất 3 ký tự' })
   cancellationReason: string;
 }
 
