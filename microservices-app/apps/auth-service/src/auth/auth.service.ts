@@ -288,7 +288,7 @@ export class AuthService implements OnModuleInit {
     const rateLimitKey = `login:${ipAddress || email}`;
     const attempts = await this.redisService.incrementCounter(
       rateLimitKey,
-      900,  
+      900,
     );
     if (attempts > 25) {
       throw new UnauthorizedException(

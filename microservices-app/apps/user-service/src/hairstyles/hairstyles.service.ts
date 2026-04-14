@@ -2,7 +2,7 @@
 
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { RedisService } from '@app/redis';
-import { Hairstyle, Stylist } from '@app/common';
+import { FileUploadService, Hairstyle, Stylist } from '@app/common';
 import { CreateHairstyleDto, UpdateHairstyleDto, FilterHairstyleDto, CreateStylistDto, UpdateStylistDto } from './dto/hairstyles.dto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
@@ -30,8 +30,9 @@ export class HairstylesService {
   constructor(
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
+    // Inject FileUploadService để upload ảnh lên Cloudinary
+    private readonly fileUploadService: FileUploadService,
   ) {
-    // Initialize Supabase client
     this.supabase = createClient(
       this.configService.getOrThrow<string>('SUPABASE_URL'),
       this.configService.getOrThrow<string>('SUPABASE_SERVICE_KEY'),
@@ -40,7 +41,22 @@ export class HairstylesService {
 
   // ==================== HAIRSTYLE METHODS ====================
 
-  async createHairstyle(dto: CreateHairstyleDto): Promise<Hairstyle> {
+  /**
+   * Tạo kiểu tóc mới.
+   * @param file File ảnh từ multipart/form-data (field "image"). Nếu có, sẽ upload lên
+   *             Cloudinary và dùng URL trả về. Nếu không có, dùng dto.imageUrl.
+   *             Nếu cả hai đều thiếu → throw BadRequestException.
+   */
+  async createHairstyle(dto: CreateHairstyleDto, file?: Express.Multer.File): Promise<Hairstyle> {
+    // Xác định imageUrl: ưu tiên file upload, fallback về dto.imageUrl
+    let imageUrl = dto.imageUrl;
+    if (file) {
+      imageUrl = await this.fileUploadService.uploadImage(file);
+    }
+    if (!imageUrl) {
+      throw new BadRequestException('Cần cung cấp ảnh kiểu tóc (file hoặc imageUrl)');
+    }
+
     // Validate stylists exist
     for (const stylistId of dto.stylistIds) {
       const stylist = await this.getStylistById(stylistId);
@@ -57,7 +73,7 @@ export class HairstylesService {
         description: dto.description,
         price: dto.price,
         duration: dto.duration,
-        image_url: dto.imageUrl,
+        image_url: imageUrl,
         category: dto.category,
         difficulty: dto.difficulty,
         is_active: dto.isActive ?? true,
@@ -89,7 +105,6 @@ export class HairstylesService {
     // Invalidate cache
     await this.invalidateHairstylesCache();
     
-    // Convert snake_case to camelCase
     return this.mapHairstyleFromDb(hairstyle, dto.stylistIds);
   }
 
@@ -101,7 +116,6 @@ export class HairstylesService {
       return cached;
     }
 
-    // Fetch from database with stylists
     const { data, error } = await this.supabase
       .from('hairstyles')
       .select(`
@@ -120,7 +134,6 @@ export class HairstylesService {
     const stylistIds = data.hairstyle_stylists?.map(hs => hs.stylist_id) || [];
     const hairstyle = this.mapHairstyleFromDb(data, stylistIds);
 
-    // Cache result
     await this.redisService.set(cacheKey, hairstyle, this.CACHE_TTL.HAIRSTYLE);
 
     return hairstyle;
@@ -133,17 +146,14 @@ export class HairstylesService {
     limit: number;
     totalPages: number;
   }> {
-    // Create cache key based on filter
     const filterKey = JSON.stringify(filter);
     const cacheKey = this.CACHE_KEYS.hairstylesList(filterKey);
     
-    // Try cache first
     const cached = await this.redisService.get<any>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    // Build query
     let query = this.supabase
       .from('hairstyles')
       .select(`
@@ -153,7 +163,6 @@ export class HairstylesService {
         )
       `, { count: 'exact' });
 
-    // Apply filters
     if (filter.isActive !== undefined) {
       query = query.eq('is_active', filter.isActive);
     }
@@ -173,7 +182,6 @@ export class HairstylesService {
       query = query.or(`name.ilike.%${filter.search}%,description.ilike.%${filter.search}%`);
     }
 
-    // Filter by stylist (requires subquery)
     if (filter.stylistId) {
       const { data: hairstyleIds } = await this.supabase
         .from('hairstyle_stylists')
@@ -188,19 +196,16 @@ export class HairstylesService {
       }
     }
 
-    // Sorting
     const sortBy = filter.sortBy || 'created_at';
     const order = filter.order || 'desc';
     query = query.order(sortBy === 'createdAt' ? 'created_at' : sortBy, { ascending: order === 'asc' });
 
-    // Pagination
     const page = filter.page || 1;
     const limit = filter.limit || 10;
     const offset = (page - 1) * limit;
     
     query = query.range(offset, offset + limit - 1);
 
-    // Execute query
     const { data, count, error } = await query;
 
     if (error) {
@@ -219,14 +224,12 @@ export class HairstylesService {
       totalPages: Math.ceil((count || 0) / limit),
     };
 
-    // Cache result
     await this.redisService.set(cacheKey, result, this.CACHE_TTL.LIST);
 
     return result;
   }
 
   async getStylistsByHairstyle(hairstyleId: string): Promise<Stylist[]> {
-    // Verify hairstyle exists
     await this.getHairstyleById(hairstyleId);
     const cacheKey = `stylists:hairstyle:${hairstyleId}`;
     const cached = await this.redisService.get<Stylist[]>(cacheKey);
@@ -234,7 +237,6 @@ export class HairstylesService {
       return cached;
     }
 
-    // Get stylist IDs linked to this hairstyle
     const { data: links, error: linkError } = await this.supabase
       .from('hairstyle_stylists')
       .select('stylist_id')
@@ -249,6 +251,7 @@ export class HairstylesService {
     if (stylistIds.length === 0) {
       return [];
     }
+
     const { data, error } = await this.supabase
       .from('stylists')
       .select('*')
@@ -262,24 +265,20 @@ export class HairstylesService {
 
     const stylists = (data || []).map(s => this.mapStylistFromDb(s));
 
-    // Cache result (10 minutes)
     await this.redisService.set(cacheKey, stylists, this.CACHE_TTL.LIST);
 
     return stylists;
   }
 
   async getHairstylesByStylist(stylistId: string): Promise<Hairstyle[]> {
-    // Verify stylist exists
     await this.getStylistById(stylistId);
 
-    // Try cache first
     const cacheKey = this.CACHE_KEYS.hairstylesByStylist(stylistId);
     const cached = await this.redisService.get<Hairstyle[]>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    // Get hairstyle IDs for this stylist
     const { data: links, error: linkError } = await this.supabase
       .from('hairstyle_stylists')
       .select('hairstyle_id')
@@ -295,7 +294,6 @@ export class HairstylesService {
       return [];
     }
 
-    // Fetch hairstyles
     const { data, error } = await this.supabase
       .from('hairstyles')
       .select(`
@@ -316,17 +314,19 @@ export class HairstylesService {
       this.mapHairstyleFromDb(h, h.hairstyle_stylists?.map(hs => hs.stylist_id) || [])
     );
 
-    // Cache result
     await this.redisService.set(cacheKey, hairstyles, this.CACHE_TTL.LIST);
 
     return hairstyles;
   }
 
-  async updateHairstyle(id: string, dto: UpdateHairstyleDto): Promise<Hairstyle> {
-    // Verify hairstyle exists
+  /**
+   * Cập nhật kiểu tóc.
+   * @param file File ảnh mới (tùy chọn). Nếu có → upload Cloudinary và thay thế imageUrl cũ.
+   *            Nếu không có file và không truyền dto.imageUrl → giữ nguyên ảnh cũ.
+   */
+  async updateHairstyle(id: string, dto: UpdateHairstyleDto, file?: Express.Multer.File): Promise<Hairstyle> {
     await this.getHairstyleById(id);
 
-    // Validate new stylists if provided
     if (dto.stylistIds) {
       for (const stylistId of dto.stylistIds) {
         const stylist = await this.getStylistById(stylistId);
@@ -336,15 +336,19 @@ export class HairstylesService {
       }
     }
 
-    // Update hairstyle
+    // Upload ảnh mới nếu có file, ghi đè dto.imageUrl
+    if (file) {
+      dto.imageUrl = await this.fileUploadService.uploadImage(file);
+    }
+
     const updateData: any = {};
-    if (dto.name) updateData.name = dto.name;
-    if (dto.description) updateData.description = dto.description;
+    if (dto.name !== undefined) updateData.name = dto.name;
+    if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.price !== undefined) updateData.price = dto.price;
     if (dto.duration !== undefined) updateData.duration = dto.duration;
-    if (dto.imageUrl) updateData.image_url = dto.imageUrl;
-    if (dto.category) updateData.category = dto.category;
-    if (dto.difficulty) updateData.difficulty = dto.difficulty;
+    if (dto.imageUrl !== undefined) updateData.image_url = dto.imageUrl;
+    if (dto.category !== undefined) updateData.category = dto.category;
+    if (dto.difficulty !== undefined) updateData.difficulty = dto.difficulty;
     if (dto.isActive !== undefined) updateData.is_active = dto.isActive;
 
     const { data: hairstyle, error } = await this.supabase
@@ -358,15 +362,12 @@ export class HairstylesService {
       throw new BadRequestException(`Lỗi khi cập nhật kiểu tóc: ${error.message}`);
     }
 
-    // Update stylist links if provided
     if (dto.stylistIds) {
-      // Delete old links
       await this.supabase
         .from('hairstyle_stylists')
         .delete()
         .eq('hairstyle_id', id);
 
-      // Insert new links
       const links = dto.stylistIds.map(stylistId => ({
         hairstyle_id: id,
         stylist_id: stylistId,
@@ -377,16 +378,13 @@ export class HairstylesService {
         .insert(links);
     }
 
-    // Invalidate cache
     await this.invalidateHairstyleCache(id);
     await this.invalidateHairstylesCache();
 
-    // Get updated hairstyle with stylists
     return this.getHairstyleById(id);
   }
 
   async deleteHairstyle(id: string): Promise<void> {
-    // Soft delete: set is_active = false
     const { error } = await this.supabase
       .from('hairstyles')
       .update({ is_active: false })
@@ -396,15 +394,24 @@ export class HairstylesService {
       throw new BadRequestException(`Lỗi khi xóa kiểu tóc: ${error.message}`);
     }
 
-    // Invalidate cache
     await this.invalidateHairstyleCache(id);
     await this.invalidateHairstylesCache();
   }
 
   // ==================== STYLIST METHODS ====================
 
-  async createStylist(dto: CreateStylistDto): Promise<Stylist> {
-    // Check if user exists and is a stylist
+  /**
+   * Tạo thợ cắt tóc mới.
+   * @param file File avatar từ multipart/form-data (tùy chọn).
+   *            Nếu có → upload Cloudinary. Nếu không → dùng dto.avatarUrl (có thể null).
+   */
+  async createStylist(dto: CreateStylistDto, file?: Express.Multer.File): Promise<Stylist> {
+    // Upload avatar nếu có file
+    let avatarUrl = dto.avatarUrl;
+    if (file) {
+      avatarUrl = await this.fileUploadService.uploadImage(file);
+    }
+
     const { data: user, error: userError } = await this.supabase
       .from('users')
       .select('id, role')
@@ -415,13 +422,12 @@ export class HairstylesService {
       throw new BadRequestException(`Không tìm thấy người dùng với ID: ${dto.userId}`);
     }
 
-    // Insert stylist
     const { data: stylist, error } = await this.supabase
       .from('stylists')
       .insert({
         user_id: dto.userId,
         full_name: dto.fullName,
-        avatar_url: dto.avatarUrl,
+        avatar_url: avatarUrl ?? null,
         experience: dto.experience,
         specialties: dto.specialties,
         rating: 0,
@@ -432,27 +438,24 @@ export class HairstylesService {
       .single();
 
     if (error) {
-      if (error.code === '23505') { // Unique violation
+      if (error.code === '23505') {
         throw new BadRequestException('Người dùng này đã là thợ cắt tóc');
       }
       throw new BadRequestException(`Lỗi khi tạo thợ cắt tóc: ${error.message}`);
     }
 
-    // Invalidate cache
     await this.invalidateStylistsCache();
 
     return this.mapStylistFromDb(stylist);
   }
 
   async getStylistById(id: string): Promise<Stylist> {
-    // Try cache first
     const cacheKey = this.CACHE_KEYS.stylist(id);
     const cached = await this.redisService.get<Stylist>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    // Fetch from database
     const { data, error } = await this.supabase
       .from('stylists')
       .select('*')
@@ -465,21 +468,18 @@ export class HairstylesService {
 
     const stylist = this.mapStylistFromDb(data);
 
-    // Cache result
     await this.redisService.set(cacheKey, stylist, this.CACHE_TTL.STYLIST);
 
     return stylist;
   }
 
   async getAllStylists(): Promise<Stylist[]> {
-    // Try cache first
     const cacheKey = this.CACHE_KEYS.stylistsList();
     const cached = await this.redisService.get<Stylist[]>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    // Fetch from database
     const { data, error } = await this.supabase
       .from('stylists')
       .select('*')
@@ -492,22 +492,28 @@ export class HairstylesService {
 
     const stylists = (data || []).map(s => this.mapStylistFromDb(s));
 
-    // Cache result
     await this.redisService.set(cacheKey, stylists, this.CACHE_TTL.LIST);
 
     return stylists;
   }
 
-  async updateStylist(id: string, dto: UpdateStylistDto): Promise<Stylist> {
-    // Verify stylist exists
+  /**
+   * Cập nhật thông tin thợ cắt tóc.
+   * @param file File avatar mới (tùy chọn). Nếu có → upload Cloudinary và thay thế avatar cũ.
+   */
+  async updateStylist(id: string, dto: UpdateStylistDto, file?: Express.Multer.File): Promise<Stylist> {
     await this.getStylistById(id);
 
-    // Update stylist
+    // Upload avatar mới nếu có file
+    if (file) {
+      dto.avatarUrl = await this.fileUploadService.uploadImage(file);
+    }
+
     const updateData: any = {};
-    if (dto.fullName) updateData.full_name = dto.fullName;
+    if (dto.fullName !== undefined) updateData.full_name = dto.fullName;
     if (dto.avatarUrl !== undefined) updateData.avatar_url = dto.avatarUrl;
     if (dto.experience !== undefined) updateData.experience = dto.experience;
-    if (dto.specialties) updateData.specialties = dto.specialties;
+    if (dto.specialties !== undefined) updateData.specialties = dto.specialties;
     if (dto.isAvailable !== undefined) updateData.is_available = dto.isAvailable;
 
     const { data: stylist, error } = await this.supabase
@@ -521,7 +527,6 @@ export class HairstylesService {
       throw new BadRequestException(`Lỗi khi cập nhật thợ cắt tóc: ${error.message}`);
     }
 
-    // Invalidate cache
     await this.invalidateStylistCache(id);
     await this.invalidateStylistsCache();
 
@@ -529,7 +534,6 @@ export class HairstylesService {
   }
 
   async deleteStylist(id: string): Promise<void> {
-    // Soft delete: set is_available = false
     const { error } = await this.supabase
       .from('stylists')
       .update({ is_available: false })
@@ -539,7 +543,6 @@ export class HairstylesService {
       throw new BadRequestException(`Lỗi khi xóa thợ cắt tóc: ${error.message}`);
     }
 
-    // Invalidate cache
     await this.invalidateStylistCache(id);
     await this.invalidateStylistsCache();
   }
@@ -582,17 +585,15 @@ export class HairstylesService {
   // Cache invalidation methods
   private async invalidateHairstyleCache(id: string): Promise<void> {
     await this.redisService.delete(this.CACHE_KEYS.hairstyle(id));
-    await this.redisService.delete(`stylists:hairstyle:${id}`); 
+    await this.redisService.delete(`stylists:hairstyle:${id}`);
   }
 
   private async invalidateHairstylesCache(): Promise<void> {
-    // Delete all list caches (pattern matching)
     const client = this.redisService.getClient();
     const keys = await client.keys('hairstyles:list:*');
     if (keys.length > 0) {
       await client.del(...keys);
     }
-    // Also invalidate hairstyles by stylist
     const stylistKeys = await client.keys('hairstyles:stylist:*');
     if (stylistKeys.length > 0) {
       await client.del(...stylistKeys);

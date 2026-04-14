@@ -11,14 +11,18 @@ export class CreateHairstyleDto {
 
   @IsNumber()
   @Min(0)
+  @Transform(({ value }) => parseFloat(value))
   price: number;
 
   @IsNumber()
   @Min(15)
+  @Transform(({ value }) => parseInt(value, 10))
   duration: number;
 
+  // Không bắt buộc nữa — có thể truyền file ảnh thay thế
   @IsString()
-  imageUrl: string;
+  @IsOptional()
+  imageUrl?: string;
 
   @IsEnum(HairstyleCategory)
   category: HairstyleCategory;
@@ -28,10 +32,14 @@ export class CreateHairstyleDto {
 
   @IsArray()
   @IsString({ each: true })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? JSON.parse(value) : value,
+  )
   stylistIds: string[];
 
   @IsBoolean()
   @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
   isActive?: boolean = true;
 
   @IsString()
@@ -50,11 +58,13 @@ export class UpdateHairstyleDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Transform(({ value }) => (value !== undefined ? parseFloat(value) : undefined))
   price?: number;
 
   @IsNumber()
   @Min(15)
   @IsOptional()
+  @Transform(({ value }) => (value !== undefined ? parseInt(value, 10) : undefined))
   duration?: number;
 
   @IsString()
@@ -72,10 +82,18 @@ export class UpdateHairstyleDto {
   @IsArray()
   @IsString({ each: true })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  })
   stylistIds?: string[];
 
   @IsBoolean()
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined) return undefined;
+    return value === 'true' || value === true;
+  })
   isActive?: boolean;
 }
 
@@ -111,7 +129,7 @@ export class FilterHairstyleDto {
 
   @IsOptional()
   @IsString()
-  stylistId?: string; // Lọc theo thợ cắt tóc
+  stylistId?: string;
 
   @IsOptional()
   @IsEnum(['easy', 'medium', 'hard'])
@@ -119,7 +137,7 @@ export class FilterHairstyleDto {
 
   @IsOptional()
   @IsString()
-  search?: string; // Tìm kiếm theo tên
+  search?: string;
 
   @IsOptional()
   @IsEnum(['price', 'duration', 'name', 'createdAt'])
@@ -148,10 +166,14 @@ export class CreateStylistDto {
 
   @IsNumber()
   @Min(0)
+  @Transform(({ value }) => parseInt(value, 10))
   experience: number;
 
   @IsArray()
   @IsString({ each: true })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? JSON.parse(value) : value,
+  )
   specialties: string[];
 }
 
@@ -167,14 +189,23 @@ export class UpdateStylistDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Transform(({ value }) => (value !== undefined ? parseInt(value, 10) : undefined))
   experience?: number;
 
   @IsArray()
   @IsString({ each: true })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  })
   specialties?: string[];
 
   @IsBoolean()
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined) return undefined;
+    return value === 'true' || value === true;
+  })
   isAvailable?: boolean;
 }

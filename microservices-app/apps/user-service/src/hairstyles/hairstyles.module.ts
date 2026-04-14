@@ -5,7 +5,7 @@ import { RedisModule } from '@app/redis';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtStrategy } from '@app/common';
+import { JwtStrategy, FileUploadService } from '@app/common';
 import { SelfUpdateGuard } from './guards/self-update.guard';
 
 @Module({
@@ -24,7 +24,8 @@ import { SelfUpdateGuard } from './guards/self-update.guard';
     }),
   ],
   controllers: [HairstylesController],
-  providers: [HairstylesService, JwtStrategy, SelfUpdateGuard],
+  // Thêm FileUploadService để inject vào HairstylesService
+  providers: [HairstylesService, JwtStrategy, SelfUpdateGuard, FileUploadService],
   exports: [HairstylesService],
 })
 export class HairstylesModule {}

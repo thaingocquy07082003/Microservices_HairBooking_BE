@@ -10,7 +10,12 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { HairstylesService } from './hairstyles.service';
 import {
   CreateHairstyleDto,
@@ -23,6 +28,18 @@ import { JwtAuthGuard, Role } from '@app/common';
 import { RolesGuard } from '@app/common/strategies/roles.guard';
 import { Roles } from '@app/common/decorators/roles.decorator';
 import { SelfUpdateGuard } from './guards/self-update.guard';
+
+// Cấu hình multer dùng chung cho cả hairstyle image và stylist avatar
+const imageUploadInterceptor = FileInterceptor('image', {
+  storage: memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new BadRequestException('Chỉ chấp nhận file ảnh'), false);
+    }
+    cb(null, true);
+  },
+});
 
 @Controller('hairstyles')
 export class HairstylesController {
@@ -69,7 +86,7 @@ export class HairstylesController {
   }
 
   /**
-   * [PUBLIC] Xem kiểu tóc theo thợ cắt - Khách chọn thợ để xem style
+   * [PUBLIC] Xem kiểu tóc theo thợ cắt
    * Roles: ALL (không cần đăng nhập)
    */
   @Get('by-stylist/:stylistId')
@@ -87,7 +104,6 @@ export class HairstylesController {
   /**
    * [PUBLIC] Xem các thợ cắt tóc có thể thực hiện một kiểu tóc
    * Roles: ALL (không cần đăng nhập)
-   * Use case: Khách chọn kiểu tóc rồi xem thợ nào làm được
    */
   @Get(':hairstyleId/stylists')
   @HttpCode(HttpStatus.OK)
@@ -138,13 +154,21 @@ export class HairstylesController {
   /**
    * [MANAGER] Tạo kiểu tóc mới
    * Roles: Manager, Admin, SuperAdmin
+   *
+   * Nhận multipart/form-data với field "image" là file ảnh (tùy chọn).
+   * Nếu không gửi file, cần truyền imageUrl trong body.
+   * Các field số (price, duration) và mảng (stylistIds) cần serialize thành string/JSON khi gửi form-data.
    */
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Manager, Role.Admin, Role.SuperAdmin)
   @HttpCode(HttpStatus.CREATED)
-  async createHairstyle(@Body() dto: CreateHairstyleDto) {
-    const hairstyle = await this.hairstylesService.createHairstyle(dto);
+  @UseInterceptors(imageUploadInterceptor)
+  async createHairstyle(
+    @Body() dto: CreateHairstyleDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    const hairstyle = await this.hairstylesService.createHairstyle(dto, file);
     return {
       statusCode: HttpStatus.CREATED,
       message: 'Tạo kiểu tóc thành công',
@@ -156,16 +180,22 @@ export class HairstylesController {
   /**
    * [MANAGER] Cập nhật kiểu tóc
    * Roles: Manager, Admin, SuperAdmin
+   *
+   * Nhận multipart/form-data với field "image" là file ảnh (tùy chọn).
+   * Nếu gửi file mới → upload lên Cloudinary và cập nhật imageUrl.
+   * Nếu không gửi file → giữ nguyên ảnh cũ (hoặc truyền imageUrl mới trong body).
    */
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Manager, Role.Admin, Role.SuperAdmin)
   @HttpCode(HttpStatus.OK)
+  @UseInterceptors(imageUploadInterceptor)
   async updateHairstyle(
     @Param('id') id: string,
     @Body() dto: UpdateHairstyleDto,
+    @UploadedFile() file?: Express.Multer.File,
   ) {
-    const hairstyle = await this.hairstylesService.updateHairstyle(id, dto);
+    const hairstyle = await this.hairstylesService.updateHairstyle(id, dto, file);
     return {
       statusCode: HttpStatus.OK,
       message: 'Cập nhật kiểu tóc thành công',
@@ -196,13 +226,20 @@ export class HairstylesController {
   /**
    * [ADMIN] Tạo thợ cắt tóc mới
    * Roles: Admin, SuperAdmin
+   *
+   * Nhận multipart/form-data với field "image" là file avatar (tùy chọn).
+   * Nếu không gửi file, có thể truyền avatarUrl trong body.
    */
   @Post('stylists')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin, Role.SuperAdmin)
   @HttpCode(HttpStatus.CREATED)
-  async createStylist(@Body() dto: CreateStylistDto) {
-    const stylist = await this.hairstylesService.createStylist(dto);
+  @UseInterceptors(imageUploadInterceptor)
+  async createStylist(
+    @Body() dto: CreateStylistDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    const stylist = await this.hairstylesService.createStylist(dto, file);
     return {
       statusCode: HttpStatus.CREATED,
       message: 'Tạo thợ cắt tóc thành công',
@@ -214,20 +251,21 @@ export class HairstylesController {
   /**
    * [ADMIN + HAIRSTYLIST] Cập nhật thông tin thợ cắt tóc
    * Roles: Admin, SuperAdmin, HairStylist (chỉ cập nhật thông tin của chính mình)
-   * 
-   * SelfUpdateGuard đảm bảo:
-   * - HairStylist chỉ được update chính mình
-   * - Admin/SuperAdmin có thể update bất kỳ stylist nào
+   *
+   * Nhận multipart/form-data với field "image" là file avatar mới (tùy chọn).
+   * SelfUpdateGuard đảm bảo HairStylist chỉ update chính mình.
    */
   @Put('stylists/:id')
   @UseGuards(JwtAuthGuard, RolesGuard, SelfUpdateGuard)
   @Roles(Role.HairStylist, Role.Admin, Role.SuperAdmin)
   @HttpCode(HttpStatus.OK)
+  @UseInterceptors(imageUploadInterceptor)
   async updateStylist(
     @Param('id') id: string,
     @Body() dto: UpdateStylistDto,
+    @UploadedFile() file?: Express.Multer.File,
   ) {
-    const stylist = await this.hairstylesService.updateStylist(id, dto);
+    const stylist = await this.hairstylesService.updateStylist(id, dto, file);
     return {
       statusCode: HttpStatus.OK,
       message: 'Cập nhật thợ cắt tóc thành công',
@@ -264,7 +302,6 @@ export class HairstylesController {
   @Roles(Role.Receptionist, Role.Manager, Role.Admin, Role.SuperAdmin)
   @HttpCode(HttpStatus.OK)
   async getAvailableHairstyles(@Query() filter: FilterHairstyleDto) {
-    // Chỉ lấy những kiểu tóc đang active
     filter.isActive = true;
     const result = await this.hairstylesService.getAllHairstyles(filter);
     return {
@@ -285,7 +322,7 @@ export class HairstylesController {
 
   /**
    * [HAIRSTYLIST] Xem các kiểu tóc mình có thể cắt
-   * Roles: HairStylist
+   * Roles: HairStylist, Manager, Admin, SuperAdmin
    */
   @Get('my-hairstyles/:stylistId')
   @UseGuards(JwtAuthGuard, RolesGuard)
