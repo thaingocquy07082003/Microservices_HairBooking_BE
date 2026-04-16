@@ -1,6 +1,5 @@
 import { IsString, IsNumber, IsEnum, IsArray, IsBoolean, IsOptional, Min, Max } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { HairstyleCategory } from '@app/common';
 
 export class CreateHairstyleDto {
   @IsString()
@@ -24,8 +23,8 @@ export class CreateHairstyleDto {
   @IsOptional()
   imageUrl?: string;
 
-  @IsEnum(HairstyleCategory)
-  category: HairstyleCategory;
+  @IsString()
+  category: string;
 
   @IsEnum(['easy', 'medium', 'hard'])
   difficulty: 'easy' | 'medium' | 'hard';
@@ -71,9 +70,9 @@ export class UpdateHairstyleDto {
   @IsOptional()
   imageUrl?: string;
 
-  @IsEnum(HairstyleCategory)
+  @IsString()
   @IsOptional()
-  category?: HairstyleCategory;
+  category?: string;
 
   @IsEnum(['easy', 'medium', 'hard'])
   @IsOptional()

@@ -5,7 +5,7 @@ export interface Hairstyle {
   price: number;
   duration: number; // phút
   imageUrl: string;
-  category: HairstyleCategory;
+  category: string;
   difficulty: 'easy' | 'medium' | 'hard';
   stylistIds: string[]; // Danh sách ID thợ cắt có thể thực hiện
   isActive: boolean;
