@@ -98,59 +98,100 @@ export class SchedulingService {
   }
 
   // ==================== BULK CREATE SCHEDULES ====================
-
+  // ✅ UPDATED: Hỗ trợ seed lịch cho NHIỀU stylist trong 1 lần gọi API
+  
   async bulkCreateSchedules(dto: BulkCreateScheduleDto): Promise<StylistSchedule[]> {
-    const schedules: StylistSchedule[] = [];
-    const currentDate = new Date(dto.startDate);
-    const endDate = new Date(dto.endDate);
-
-    while (currentDate <= endDate) {
-      const dayOfWeek = currentDate.getDay();
-      
-      // Skip if not in workDays
-      if (dto.workDays && !dto.workDays.includes(dayOfWeek)) {
-        currentDate.setDate(currentDate.getDate() + 1);
-        continue;
-      }
-
-      // Skip if in excludeDates
-      if (dto.excludeDates && dto.excludeDates.some(d => 
-        new Date(d).toISOString().split('T')[0] === currentDate.toISOString().split('T')[0]
-      )) {
-        currentDate.setDate(currentDate.getDate() + 1);
-        continue;
-      }
-
-      // Check if schedule already exists
-      const { data: existing } = await this.supabase
-        .from('stylist_schedules')
-        .select('id')
-        .eq('stylist_id', dto.stylistId)
-        .eq('work_date', currentDate.toISOString().split('T')[0])
-        .single();
-
-      if (!existing) {
-        try {
-          const schedule = await this.createSchedule({
-            stylistId: dto.stylistId,
-            workDate: new Date(currentDate),
-            startTime: dto.startTime,
-            endTime: dto.endTime,
-            breakTimes: dto.breakTimes,
-          });
-          schedules.push(schedule);
-        } catch (error) {
-          console.error(`Failed to create schedule for ${currentDate}:`, error);
-        }
-      }
-
-      currentDate.setDate(currentDate.getDate() + 1);
+    // Validate stylistIds tồn tại
+    if (!dto.stylistIds || dto.stylistIds.length === 0) {
+      throw new BadRequestException('Phải cung cấp ít nhất 1 stylistId');
     }
 
-    return schedules;
+    // Loại bỏ duplicate IDs nếu có
+    const uniqueStylistIds = [...new Set(dto.stylistIds)];
+
+    // Pre-fetch tất cả stylists để validate tồn tại (tránh loop insert vào stylist không tồn tại)
+    const { data: existingStylists, error: stylistsError } = await this.supabase
+      .from('stylists')
+      .select('id, full_name')
+      .in('id', uniqueStylistIds);
+
+    if (stylistsError) {
+      throw new BadRequestException(`Lỗi khi kiểm tra stylists: ${stylistsError.message}`);
+    }
+
+    const existingIds = new Set((existingStylists ?? []).map(s => s.id));
+    const missingIds = uniqueStylistIds.filter(id => !existingIds.has(id));
+    if (missingIds.length > 0) {
+      throw new NotFoundException(
+        `Không tìm thấy các stylist: ${missingIds.join(', ')}`,
+      );
+    }
+
+    const allCreatedSchedules: StylistSchedule[] = [];
+
+    // Loop qua từng stylist
+    for (const stylistId of uniqueStylistIds) {
+      const currentDate = new Date(dto.startDate);
+      const endDate = new Date(dto.endDate);
+
+      while (currentDate <= endDate) {
+        const dayOfWeek = currentDate.getDay();
+
+        // Skip if not in workDays
+        if (dto.workDays && !dto.workDays.includes(dayOfWeek)) {
+          currentDate.setDate(currentDate.getDate() + 1);
+          continue;
+        }
+
+        // Skip if in excludeDates
+        if (
+          dto.excludeDates &&
+          dto.excludeDates.some(
+            (d) =>
+              new Date(d).toISOString().split('T')[0] ===
+              currentDate.toISOString().split('T')[0],
+          )
+        ) {
+          currentDate.setDate(currentDate.getDate() + 1);
+          continue;
+        }
+
+        // Check if schedule already exists cho stylist + ngày này
+        const { data: existing } = await this.supabase
+          .from('stylist_schedules')
+          .select('id')
+          .eq('stylist_id', stylistId)
+          .eq('work_date', currentDate.toISOString().split('T')[0])
+          .maybeSingle();
+
+        if (!existing) {
+          try {
+            const schedule = await this.createSchedule({
+              stylistId,
+              workDate: new Date(currentDate),
+              startTime: dto.startTime,
+              endTime: dto.endTime,
+              breakTimes: dto.breakTimes,
+            });
+            allCreatedSchedules.push(schedule);
+          } catch (error) {
+            console.error(
+              `Failed to create schedule for stylist=${stylistId}, date=${currentDate.toISOString().split('T')[0]}:`,
+              error,
+            );
+            // tiếp tục loop, không throw để các ngày/stylist khác vẫn chạy
+          }
+        }
+
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    }
+
+    return allCreatedSchedules;
   }
 
   // ==================== GET SCHEDULES ====================
+  // ✅ UPDATED: Join với bảng stylists để trả về stylistName, stylistAvatar
 
   async getSchedules(filter: GetSchedulesDto): Promise<StylistSchedule[]> {
     const cacheKey = this.CACHE_KEYS.schedulesList(JSON.stringify(filter));
@@ -159,7 +200,17 @@ export class SchedulingService {
       return cached;
     }
 
-    let query = this.supabase.from('stylist_schedules').select('*');
+    // Dùng nested select của Supabase để join qua FK stylist_id -> stylists.id
+    let query = this.supabase
+      .from('stylist_schedules')
+      .select(`
+        *,
+        stylists:stylist_id (
+          id,
+          full_name,
+          avatar_url
+        )
+      `);
 
     if (filter.stylistId) {
       query = query.eq('stylist_id', filter.stylistId);
@@ -283,10 +334,20 @@ export class SchedulingService {
 
   // ==================== HELPER METHODS ====================
 
+  /**
+   * ✅ UPDATED: Map stylistName / stylistAvatar từ nested object khi có join,
+   * fallback an toàn khi không join (dùng cho create/update chỉ trả về bảng gốc).
+   */
   private mapScheduleFromDb(data: any): StylistSchedule {
+    // Khi query có join, Supabase trả về object: data.stylists = { id, full_name, avatar_url }
+    // Khi là array thì lấy phần tử đầu (phòng trường hợp không định nghĩa 1-1)
+    const stylistRel = Array.isArray(data.stylists) ? data.stylists[0] : data.stylists;
+
     return {
       id: data.id,
       stylistId: data.stylist_id,
+      stylistName: stylistRel?.full_name ?? undefined,
+      stylistAvatar: stylistRel?.avatar_url ?? undefined,
       workDate: new Date(data.work_date),
       startTime: data.start_time,
       endTime: data.end_time,

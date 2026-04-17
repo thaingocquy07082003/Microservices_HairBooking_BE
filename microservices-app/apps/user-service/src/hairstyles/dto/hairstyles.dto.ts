@@ -111,8 +111,8 @@ export class FilterHairstyleDto {
   limit?: number = 10;
 
   @IsOptional()
-  @IsEnum(HairstyleCategory)
-  category?: HairstyleCategory;
+  @IsString()
+  category?: string;
 
   @IsOptional()
   @Transform(({ value }) => parseFloat(value))

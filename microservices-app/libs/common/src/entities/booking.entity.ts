@@ -75,6 +75,8 @@ export interface AppointmentDetailed extends Appointment {
 export interface StylistSchedule {
   id: string;
   stylistId: string;
+  stylistName?: string;       // ✅ NEW: Tên stylist (khi join với bảng stylists)
+  stylistAvatar?: string;     // ✅ NEW: Avatar stylist (optional, tiện cho FE)
   workDate: Date;
   startTime: string;
   endTime: string;

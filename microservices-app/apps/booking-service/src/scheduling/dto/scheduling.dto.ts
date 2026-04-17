@@ -6,7 +6,8 @@ import {
   IsOptional, 
   Matches,
   IsArray,
-  ValidateNested
+  ValidateNested,
+  ArrayMinSize
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
@@ -98,10 +99,29 @@ export class UpdateScheduleDto {
 }
 
 // ==================== BULK CREATE SCHEDULES ====================
+// ✅ UPDATED: stylistIds nhận MẢNG string để seed cho NHIỀU stylist trong 1 lần call
 
 export class BulkCreateScheduleDto {
-  @IsUUID()
-  stylistId: string;
+  /**
+   * Danh sách UUID của các stylist cần seed lịch.
+   * Có thể truyền 1 hoặc nhiều stylist, mỗi stylist sẽ được tạo lịch
+   * trên toàn bộ khoảng thời gian [startDate, endDate] theo workDays.
+   *
+   * Hỗ trợ 2 kiểu input cho tiện:
+   *  - JSON array: ["uuid-1", "uuid-2"]
+   *  - Chuỗi cách nhau bằng dấu phẩy: "uuid-1,uuid-2" (tự split)
+   */
+  @Transform(({ value }) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      return value.split(',').map(v => v.trim()).filter(Boolean);
+    }
+    return value;
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'stylistIds phải có ít nhất 1 stylist' })
+  @IsUUID('all', { each: true, message: 'Mỗi stylistId phải là UUID hợp lệ' })
+  stylistIds: string[];
 
   @Transform(({ value }) => new Date(value))
   @IsDate()
@@ -124,7 +144,7 @@ export class BulkCreateScheduleDto {
   excludeDates?: Date[]; // Các ngày loại trừ
 
   @IsArray()
-  @Transform(({ value }) => value.map(Number))
+  @Transform(({ value }) => Array.isArray(value) ? value.map(Number) : value)
   @IsOptional()
   workDays?: number[]; // 0 = Sunday, 1 = Monday, ... (nếu không truyền = all days)
 
