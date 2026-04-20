@@ -6,6 +6,7 @@ import { ProfilesModule } from './profile/profile.module';
 import {HairCategoriesModule} from "./category/category.module";
 import { BranchesModule } from './branch/branch.module';
 import { HairTryOnModule } from './hair-tryon/hair-tryon.module';
+import { NotificationModule } from './notification/notification.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -17,7 +18,8 @@ import { HairTryOnModule } from './hair-tryon/hair-tryon.module';
     ProfilesModule,
     HairCategoriesModule,
     BranchesModule,
-    HairTryOnModule
+    HairTryOnModule,
+    NotificationModule,
   ],
 })
 export class AppModule {}
