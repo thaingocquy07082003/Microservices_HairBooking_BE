@@ -1568,3 +1568,132 @@ ALTER TABLE sepay_transactions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Service role full access sepay_transactions"
   ON sepay_transactions FOR ALL TO service_role
   USING (true) WITH CHECK (true);
+
+
+-- ============================================
+-- NOTIFICATIONS TABLE
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title VARCHAR(255) NOT NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
+
+CREATE OR REPLACE FUNCTION update_notifications_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_notifications_updated_at
+  BEFORE UPDATE ON notifications
+  FOR EACH ROW
+  EXECUTE FUNCTION update_notifications_updated_at();
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access notifications"
+  ON notifications FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Anyone can view notifications"
+  ON notifications FOR SELECT
+  TO anon, authenticated
+  USING (true);
+
+-- ============================================
+-- SERVICES MANAGEMENT - SUPABASE SCHEMA
+-- ============================================
+-- Purpose: Quản lý dịch vụ (services) của salon
+-- Date: April 2026
+
+-- ============================================
+-- 1. CREATE SERVICES TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS services (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- Thông tin cơ bản
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  price DECIMAL(10,2) NOT NULL CHECK (price >= 0),
+  duration INTEGER NOT NULL CHECK (duration >= 15), -- phút
+
+  -- Phân loại
+  category VARCHAR(100),
+
+  -- Ảnh
+  image_url TEXT,
+
+  -- Soft delete: chỉ cần đặt is_available = false để "xóa mềm"
+  is_available BOOLEAN NOT NULL DEFAULT true,
+
+  -- Metadata
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================
+-- 2. INDEXES
+-- ============================================
+CREATE INDEX idx_services_is_available ON services(is_available);
+CREATE INDEX idx_services_category    ON services(category);
+CREATE INDEX idx_services_price       ON services(price);
+CREATE INDEX idx_services_created_at  ON services(created_at DESC);
+
+-- ============================================
+-- 3. TRIGGER auto updated_at
+-- ============================================
+CREATE OR REPLACE FUNCTION update_services_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_services_updated_at
+  BEFORE UPDATE ON services
+  FOR EACH ROW
+  EXECUTE FUNCTION update_services_updated_at();
+
+-- ============================================
+-- 4. ROW LEVEL SECURITY (RLS)
+-- ============================================
+ALTER TABLE services ENABLE ROW LEVEL SECURITY;
+
+-- Service role: full access (backend API)
+CREATE POLICY "Service role full access services"
+  ON services FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+-- Public / authenticated: chỉ xem dịch vụ đang available
+CREATE POLICY "Anyone can view available services"
+  ON services FOR SELECT
+  TO anon, authenticated
+  USING (is_available = true);
+
+-- ============================================
+-- 5. GRANT PERMISSIONS
+-- ============================================
+GRANT ALL ON services TO service_role;
+GRANT SELECT ON services TO anon;
+GRANT SELECT ON services TO authenticated;
+
+-- ============================================
+-- 6. SEED DATA (tùy chọn)
+-- ============================================
+INSERT INTO services (name, description, price, duration, category, is_available) VALUES
+('Cắt tóc cơ bản',   'Dịch vụ cắt tóc cơ bản cho mọi kiểu tóc',        80000,  30, 'Cắt tóc', true),
+('Gội đầu + massage', 'Gội đầu kết hợp massage đầu thư giãn',            60000,  20, 'Chăm sóc', true),
+('Nhuộm toàn đầu',   'Nhuộm tóc toàn bộ với màu tùy chọn',             350000,  90, 'Nhuộm',    true),
+('Uốn tóc Hàn Quốc', 'Uốn tóc phong cách Hàn Quốc giữ nếp lâu',       500000, 120, 'Uốn/Duỗi', true),
+('Duỗi tóc tự nhiên','Duỗi tóc giữ độ phồng và độ bóng tự nhiên',      450000, 100, 'Uốn/Duỗi', true)
+ON CONFLICT DO NOTHING;
