@@ -192,7 +192,7 @@ export class HairstylesService {
       if (ids.length > 0) {
         query = query.in('id', ids);
       } else {
-        return { data: [], total: 0, page: filter.page || 1, limit: filter.limit || 10, totalPages: 0 };
+        return { data: [], total: 0, page: filter.page || 1, limit: filter.limit || 30, totalPages: 0 };
       }
     }
 
@@ -201,7 +201,7 @@ export class HairstylesService {
     query = query.order(sortBy === 'createdAt' ? 'created_at' : sortBy, { ascending: order === 'asc' });
 
     const page = filter.page || 1;
-    const limit = filter.limit || 10;
+    const limit = filter.limit || 30;
     const offset = (page - 1) * limit;
     
     query = query.range(offset, offset + limit - 1);

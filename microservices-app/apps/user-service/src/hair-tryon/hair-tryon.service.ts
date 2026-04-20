@@ -92,24 +92,29 @@ export class HairTryOnService {
 
   /**
    * Xác định template payload:
-   *   - image_url KHÔNG bắt đầu bằng "http" → là YouCam template_id
-   *   - image_url bắt đầu bằng "http"       → là URL công khai, dùng ref_file_url
+   *   - image_url là YouCam template_id (không chứa "http" và không phải local path)
+   *   - image_url là public URL (https://...) → dùng ref_file_url (remove query params)
+   *   - image_url là local path (/tmp/...) → coi như template_id (invalid → error)
    *
    * YouCam API v2.1 field names:
    *   src_file_url  = ảnh người dùng (URL công khai)
    *   template_id   = ID template kiểu tóc từ YouCam
-   *   ref_file_url  = ảnh kiểu tóc từ URL bên ngoài
+   *   ref_file_url  = ảnh kiểu tóc từ URL bên ngoài (KHÔNG query params)
    */
   private buildTemplatePayload(imageUrl: string): Record<string, string> {
-    const isYouCamTemplateId = !imageUrl.startsWith('http') && !imageUrl.startsWith('/');
-    return isYouCamTemplateId
-      ? { template_id: imageUrl }
-      : { ref_file_url: imageUrl }; // ✅ Đúng field name, không phải template_url
+    // If it's a public HTTPS URL, strip query params and use as ref_file_url
+    if (imageUrl.startsWith('https://') || imageUrl.startsWith('http://')) {
+      const urlWithoutQuery = imageUrl.split('?')[0]; // Remove query parameters
+      return { ref_file_url: urlWithoutQuery };
+    }
+    
+    // Otherwise, treat as YouCam template_id
+    // (local paths like /tmp/... will fail, but that indicates bad data in DB)
+    return { template_id: imageUrl };
   }
 
   /**
    * POST /s2s/v2.1/task/hair-transfer
-   *
    * Body hợp lệ (một trong các dạng):
    *   { src_file_url, template_id }
    *   { src_file_url, ref_file_url }
