@@ -6,3 +6,4 @@ export * from './reset-password.dto';
 export * from './change-password.dto';
 export * from './resend-otp.dto';
 export * from './refresh-token.dto';
+export * from './create-stylist-account.dto';
