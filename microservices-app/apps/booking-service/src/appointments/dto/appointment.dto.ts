@@ -1,17 +1,19 @@
-import { 
-  IsString, 
-  IsUUID, 
-  IsDate, 
-  IsNumber, 
-  IsEnum, 
-  IsBoolean, 
-  IsOptional, 
-  MinLength, 
+// booking-service/src/appointments/dto/appointment.dto.ts
+
+import {
+  IsString,
+  IsUUID,
+  IsDate,
+  IsNumber,
+  IsEnum,
+  IsBoolean,
+  IsOptional,
+  IsArray,
+  MinLength,
   Min,
   Max,
   Matches,
   IsEmail,
-  ValidateNested
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { AppointmentStatus } from '@app/common/entities/booking.entity';
@@ -20,35 +22,45 @@ import { AppointmentStatus } from '@app/common/entities/booking.entity';
 
 export class CreateAppointmentDto {
   @IsUUID()
-  customerId: string;
+  customerId?: string;
 
   @IsUUID()
-  stylistId: string;
+  stylistId?: string;
 
   @IsUUID()
-  hairstyleId: string;
+  hairstyleId?: string;
+
+  /**
+   * ✅ NEW: Danh sách service IDs (optional - nullable)
+   * Khách hàng có thể đặt lịch kèm theo các dịch vụ bổ sung.
+   * Nếu không có dịch vụ nào, bỏ qua hoặc truyền null/[].
+   */
+  @IsArray()
+  @IsUUID('all', { each: true, message: 'Mỗi serviceId phải là UUID hợp lệ' })
+  @IsOptional()
+  serviceIds?: string[] | null;
 
   @Transform(({ value }) => new Date(value))
   @IsDate()
-  appointmentDate: Date;
+  appointmentDate?: Date;
 
   @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, { 
-    message: 'startTime phải có định dạng HH:mm (ví dụ: 09:30)' 
+  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+    message: 'startTime phải có định dạng HH:mm (ví dụ: 09:30)',
   })
-  startTime: string;
+  startTime?: string;
 
   @IsNumber()
   @Min(15)
-  duration: number;
+  duration?: number;
 
   @IsString()
   @MinLength(2)
-  customerName: string;
+  customerName?: string;
 
   @IsString()
   @Matches(/^[0-9]{10,11}$/, { message: 'Số điện thoại không hợp lệ' })
-  customerPhone: string;
+  customerPhone?: string;
 
   @IsEmail()
   @IsOptional()
@@ -60,7 +72,7 @@ export class CreateAppointmentDto {
 
   @IsNumber()
   @Min(0)
-  price: number;
+  price?: number;
 
   @IsNumber()
   @Min(0)
@@ -82,6 +94,15 @@ export class UpdateAppointmentDto {
   @IsUUID()
   @IsOptional()
   hairstyleId?: string;
+
+  /**
+   * ✅ NEW: Cập nhật danh sách service IDs.
+   * Truyền [] để xóa toàn bộ services, null/undefined để giữ nguyên.
+   */
+  @IsArray()
+  @IsUUID('all', { each: true, message: 'Mỗi serviceId phải là UUID hợp lệ' })
+  @IsOptional()
+  serviceIds?: string[] | null;
 
   @Transform(({ value }) => new Date(value))
   @IsDate()
@@ -167,6 +188,13 @@ export class FilterAppointmentDto {
   @IsUUID()
   hairstyleId?: string;
 
+  /**
+   * ✅ NEW: Lọc các appointment có chứa serviceId này
+   */
+  @IsOptional()
+  @IsUUID()
+  serviceId?: string;
+
   @IsOptional()
   @Transform(({ value }) => new Date(value))
   @IsDate()
@@ -179,7 +207,7 @@ export class FilterAppointmentDto {
 
   @IsOptional()
   @IsString()
-  search?: string; // Tìm kiếm theo tên hoặc số điện thoại
+  search?: string;
 
   @IsOptional()
   @IsString()
@@ -192,7 +220,7 @@ export class FilterAppointmentDto {
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
-  includeDetails?: boolean = false; // Include stylist, hairstyle details
+  includeDetails?: boolean = false;
 }
 
 // ==================== CANCEL APPOINTMENT ====================
@@ -200,7 +228,7 @@ export class FilterAppointmentDto {
 export class CancelAppointmentDto {
   @IsString()
   @MinLength(3, { message: 'Lý do hủy phải có ít nhất 3 ký tự' })
-  cancellationReason: string;
+  cancellationReason?: string;
 }
 
 // ==================== CONFIRM APPOINTMENT ====================
@@ -220,15 +248,15 @@ export class ConfirmAppointmentDto {
 export class RescheduleAppointmentDto {
   @Transform(({ value }) => new Date(value))
   @IsDate()
-  newAppointmentDate: Date;
+  newAppointmentDate?: Date;
 
   @IsString()
   @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
-  newStartTime: string;
+  newStartTime?: string;
 
   @IsUUID()
   @IsOptional()
-  newStylistId?: string; // Có thể đổi thợ cắt
+  newStylistId?: string;
 
   @IsString()
   @IsOptional()
@@ -242,7 +270,7 @@ export class CompleteAppointmentDto {
   @Min(1)
   @Max(5)
   @IsOptional()
-  rating?: number; // Customer rating for stylist
+  rating?: number;
 
   @IsString()
   @IsOptional()
@@ -251,7 +279,7 @@ export class CompleteAppointmentDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
-  actualPrice?: number; // Giá thực tế nếu khác giá dự kiến
+  actualPrice?: number;
 
   @IsString()
   @IsOptional()
@@ -262,31 +290,31 @@ export class CompleteAppointmentDto {
 
 export class CheckAvailabilityDto {
   @IsUUID()
-  stylistId: string;
+  stylistId?: string;
 
   @Transform(({ value }) => new Date(value))
   @IsDate()
-  date: Date;
+  date?: Date;
 
   @IsNumber()
   @Min(15)
-  duration: number;
+  duration?: number;
 
   @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, { 
-    message: 'startTime phải có định dạng HH:mm (ví dụ: 09:30)' 
+  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+    message: 'startTime phải có định dạng HH:mm (ví dụ: 09:30)',
   })
-  startTime: string;
+  startTime?: string;
 
   @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, { 
-    message: 'startTime phải có định dạng HH:mm (ví dụ: 09:30)' 
+  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+    message: 'endTime phải có định dạng HH:mm (ví dụ: 09:30)',
   })
-  endTime: string;
+  endTime?: string;
 
   @IsUUID()
   @IsOptional()
-  excludeAppointmentId?: string; // Dùng khi reschedule
+  excludeAppointmentId?: string;
 }
 
 // ==================== GET AVAILABLE SLOTS ====================
@@ -294,31 +322,31 @@ export class CheckAvailabilityDto {
 export class GetAvailableSlotsDto {
   @Transform(({ value }) => new Date(value))
   @IsDate()
-  date: Date;
+  date?: Date;
 
   @IsUUID()
   @IsOptional()
-  stylistId?: string; // Nếu không truyền, lấy tất cả thợ
+  stylistId?: string;
 
   @IsNumber()
   @Min(15)
   @IsOptional()
-  duration?: number; // Thời gian dự kiến
+  duration?: number;
 
   @IsNumber()
   @Min(15)
   @IsOptional()
-  slotInterval?: number = 30; // Khoảng cách giữa các slot (phút)
+  slotInterval?: number = 30;
 }
 
 // ==================== BULK OPERATIONS ====================
 
 export class BulkUpdateStatusDto {
   @IsUUID(undefined, { each: true })
-  appointmentIds: string[];
+  appointmentIds?: string[];
 
   @IsEnum(AppointmentStatus)
-  status: AppointmentStatus;
+  status?: AppointmentStatus;
 
   @IsString()
   @IsOptional()

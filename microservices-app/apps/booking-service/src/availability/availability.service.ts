@@ -35,7 +35,7 @@ export class AvailabilityService {
   // ==================== GET AVAILABLE SLOTS ====================
 
   async getAvailableSlots(dto: GetAvailableSlotsDto): Promise<AvailableSlot[]> {
-    const dateStr = dto.date.toISOString().split('T')[0];
+    const dateStr = dto.date!.toISOString().split('T')[0];
     const cacheKey = this.CACHE_KEYS.availableSlots(dateStr, dto.stylistId);
     
     const cached = await this.redisService.get<AvailableSlot[]>(cacheKey);
@@ -130,7 +130,7 @@ export class AvailabilityService {
         availableSlots.push({
           stylistId: schedule.stylist_id,
           stylistName: stylist.full_name,
-          date: dto.date,
+          date: dto.date!,
           slots: slots,
         });
       }
@@ -145,7 +145,7 @@ export class AvailabilityService {
   // ==================== CHECK AVAILABILITY ====================
 
   async checkAvailability(dto: CheckAvailabilityDto): Promise<boolean> {
-    const dateStr = dto.date.toISOString().split('T')[0];
+    const dateStr = dto.date!.toISOString().split('T')[0];
     
     // Check if schedule exists
     const { data: schedule } = await this.supabase
@@ -177,7 +177,7 @@ export class AvailabilityService {
       p_stylist_id: dto.stylistId,
       p_date: dateStr,
       p_start_time: this.getCurrentTimeString(),
-      p_end_time: this.calculateEndTime(this.getCurrentTimeString(), dto.duration),
+      p_end_time: this.calculateEndTime(this.getCurrentTimeString(), dto.duration!),
       p_exclude_appointment_id: dto.excludeAppointmentId || null,
     });
 

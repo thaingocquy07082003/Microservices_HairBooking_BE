@@ -1,3 +1,5 @@
+// booking-service/src/appointments/appointment.controller.ts
+
 import {
   Controller,
   Get,
@@ -32,8 +34,9 @@ export class AppointmentsController {
   // ==================== CUSTOMER ENDPOINTS ====================
 
   /**
-   * [CUSTOMER] Tạo lịch hẹn mới ( chú ý bảng Stylist_Schedule - lịch làm việc của thợ)
-   * Roles: Customer, Authenticated
+   * [CUSTOMER] Tạo lịch hẹn mới
+   * Body có thể kèm serviceIds (optional, nullable)
+   * Roles: Authenticated
    */
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -42,9 +45,8 @@ export class AppointmentsController {
     @Body() dto: CreateAppointmentDto,
     @User() user: any,
   ) {
-    // Ensure customer can only book for themselves
     dto.customerId = user.id;
-    
+
     const appointment = await this.appointmentsService.createAppointment(dto);
     return {
       statusCode: HttpStatus.CREATED,
@@ -55,7 +57,7 @@ export class AppointmentsController {
   }
 
   /**
-   * [CUSTOMER] Xem lịch hẹn của mình
+   * [CUSTOMER] Xem lịch hẹn của mình (kèm services)
    * Roles: Authenticated
    */
   @Get('my-appointments')
@@ -67,7 +69,7 @@ export class AppointmentsController {
   ) {
     filter.customerId = user.id;
     filter.includeDetails = true;
-    
+
     const result = await this.appointmentsService.getAllAppointments(filter);
     return {
       statusCode: HttpStatus.OK,
@@ -84,7 +86,7 @@ export class AppointmentsController {
   }
 
   /**
-   * [CUSTOMER] Hủy lịch hẹn
+   * [CUSTOMER] Hủy lịch hẹn của mình
    * Roles: Authenticated
    */
   @Post(':id/cancel')
@@ -95,7 +97,6 @@ export class AppointmentsController {
     @Body() dto: CancelAppointmentDto,
     @User() user: any,
   ) {
-    // Verify ownership
     const appointment = await this.appointmentsService.getAppointmentById(id);
     if (appointment.customerId !== user.id) {
       return {
@@ -118,6 +119,7 @@ export class AppointmentsController {
 
   /**
    * [STAFF] Xem tất cả lịch hẹn
+   * Query params bổ sung: serviceId (lọc theo dịch vụ)
    * Roles: Receptionist, HairStylist, Manager, Admin
    */
   @Get()
@@ -128,10 +130,8 @@ export class AppointmentsController {
     @Query() filter: FilterAppointmentDto,
     @User() user: any,
   ) {
-    // HairStylist chỉ xem được lịch của mình
     if (user.role === Role.HairStylist) {
-      // Need to get stylist_id from stylists table by user_id
-      filter.stylistId = user.stylistId; // Assume this is set in JWT
+      filter.stylistId = user.stylistId;
     }
 
     const result = await this.appointmentsService.getAllAppointments(filter);
@@ -150,17 +150,19 @@ export class AppointmentsController {
   }
 
   /**
-   * [STAFF] Xem chi tiết lịch hẹn
-   * Roles: Receptionist, HairStylist, Manager, Admin
+   * [STAFF] Xem chi tiết lịch hẹn (kèm services)
+   * Roles: Receptionist, HairStylist, Manager, Admin, Customer
    */
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.Receptionist, Role.HairStylist, Role.Manager, Role.Admin, Role.SuperAdmin, Role.Customer)
+  @Roles(
+    Role.Receptionist, Role.HairStylist, Role.Manager,
+    Role.Admin, Role.SuperAdmin, Role.Customer,
+  )
   @HttpCode(HttpStatus.OK)
   async getAppointmentById(@Param('id') id: string, @User() user: any) {
     const appointment = await this.appointmentsService.getAppointmentById(id, true);
-    
-    // Customer chỉ xem được lịch của mình
+
     if (user.role === Role.Customer && appointment.customerId !== user.id) {
       return {
         statusCode: HttpStatus.FORBIDDEN,
@@ -223,6 +225,10 @@ export class AppointmentsController {
 
   /**
    * [MANAGER] Cập nhật lịch hẹn
+   * Body có thể kèm serviceIds để thay đổi danh sách dịch vụ
+   * - serviceIds: string[]  → thay thế toàn bộ danh sách cũ
+   * - serviceIds: []        → xóa toàn bộ dịch vụ
+   * - serviceIds: undefined → giữ nguyên (không thay đổi)
    * Roles: Manager, Admin, SuperAdmin
    */
   @Put(':id')
@@ -251,7 +257,6 @@ export class AppointmentsController {
   @Roles(Role.Admin, Role.SuperAdmin)
   @HttpCode(HttpStatus.OK)
   async deleteAppointment(@Param('id') id: string) {
-    // Implementation for hard delete would go here
     return {
       statusCode: HttpStatus.OK,
       message: 'Xóa lịch hẹn thành công',

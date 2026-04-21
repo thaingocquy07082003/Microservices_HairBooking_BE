@@ -1,3 +1,5 @@
+// libs/common/src/entities/booking.entity.ts
+
 // Appointment Status Enum
 export enum AppointmentStatus {
   PENDING = 'pending',
@@ -25,34 +27,46 @@ export enum RecurrenceType {
   MONTHLY = 'monthly',
 }
 
+// ✅ NEW: Summary thông tin service gắn với appointment
+export interface AppointmentServiceSummary {
+  id: string;
+  name: string;
+  price: number;
+  duration: number;
+  category?: string;
+}
+
 // Appointment Entity
 export interface Appointment {
   id: string;
   customerId: string;
   stylistId: string;
   hairstyleId: string;
-  
+
+  // ✅ NEW: Danh sách service IDs (nullable - có thể không có service nào)
+  serviceIds?: string[] | null;
+
   appointmentDate: Date;
   startTime: string;
   endTime: string;
   duration: number;
-  
+
   status: AppointmentStatus;
-  
+
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
-  
+
   notes?: string;
   cancellationReason?: string;
-  
+
   price: number;
   depositAmount: number;
   depositPaid: boolean;
-  
+
   reminderSent: boolean;
   reminderSentAt?: Date;
-  
+
   createdAt: Date;
   updatedAt: Date;
   confirmedAt?: Date;
@@ -69,14 +83,17 @@ export interface AppointmentDetailed extends Appointment {
   customerFullName: string;
   customerUserEmail: string;
   customerUserPhone: string;
+
+  // ✅ NEW: Chi tiết các services (từ view appointments_detailed)
+  services?: AppointmentServiceSummary[];
 }
 
 // Stylist Schedule Entity
 export interface StylistSchedule {
   id: string;
   stylistId: string;
-  stylistName?: string;       // ✅ NEW: Tên stylist (khi join với bảng stylists)
-  stylistAvatar?: string;     // ✅ NEW: Avatar stylist (optional, tiện cho FE)
+  stylistName?: string;
+  stylistAvatar?: string;
   workDate: Date;
   startTime: string;
   endTime: string;
